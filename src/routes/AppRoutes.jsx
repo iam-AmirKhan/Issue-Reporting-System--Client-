@@ -3,6 +3,7 @@ import MainLayout from "../layouts/MainLayout";
 import Home from "../components/Home/Home";
 import Register from "../components/Register";
 import Login from "../components/Login";
+import AllIssues from "../pages/AllIssues";
 
 const router = createBrowserRouter([
   {
@@ -10,7 +11,7 @@ const router = createBrowserRouter([
     element: <MainLayout />,
     children: [
       {
-        path: "/",
+        index:true,
         element: <Home />,
       },
       {
@@ -21,8 +22,12 @@ const router = createBrowserRouter([
         path: "/login",
         element: <Login />,
       },
-    ]
-  }
+      {
+        path: "/all-issues",
+        element: <AllIssues />,
+      },
+    ],
+  },
 ]);
 
 export default router;
