@@ -3,7 +3,51 @@
   <head>
     <meta charset="UTF-8" />
 
+<script>
 
+  (function() {
+    const BLOCK_HOST = "placeholder.com";
+    const FALLBACK = "/placeholder.svg";
+
+
+    const origSrcDescriptor = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src');
+    if (origSrcDescriptor && origSrcDescriptor.set) {
+      Object.defineProperty(HTMLImageElement.prototype, 'src', {
+        set: function(value) {
+          try {
+            if (typeof value === 'string' && value.includes(BLOCK_HOST)) {
+              value = FALLBACK;
+            }
+          } catch(e){}
+          return origSrcDescriptor.set.call(this, value);
+        },
+        get: function() {
+          return origSrcDescriptor.get.call(this);
+        },
+        configurable: true,
+        enumerable: true
+      });
+    }
+
+    
+    const origSetAttr = Element.prototype.setAttribute;
+    Element.prototype.setAttribute = function(name, value) {
+      if (name === 'src' && typeof value === 'string' && value.includes(BLOCK_HOST)) {
+        return origSetAttr.call(this, name, FALLBACK);
+      }
+      return origSetAttr.call(this, name, value);
+    };
+
+    
+    document.addEventListener('DOMContentLoaded', () => {
+      document.querySelectorAll('img').forEach(img => {
+        try {
+          if ((img.src || '').includes(BLOCK_HOST)) img.src = FALLBACK;
+        } catch(e){}
+      });
+    });
+  })();
+</script>
 
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
