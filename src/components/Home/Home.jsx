@@ -1,11 +1,11 @@
-import Banner from "./Banner";
+import BannerSlider from "../Home/BannerSlider";
 import Features from "./Features";
 import LatestIssues from "./LatestIssues";
 
 const Home = () => {
   return (
     <div>
-      <Banner />
+      <BannerSlider />
       <Features />
       <LatestIssues />
     </div>
