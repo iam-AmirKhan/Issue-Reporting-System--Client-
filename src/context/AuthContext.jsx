@@ -102,6 +102,7 @@ export default function AuthProvider({ children }) {
         login,
         loginWithGoogle,
         logout,
+        logOut: logout,
       }}
     >
       {children}
