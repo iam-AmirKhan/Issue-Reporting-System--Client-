@@ -1,7 +1,7 @@
 
 import React, { useEffect, useState } from "react";
-import api from "../api/axiosConfig";
-import IssueCard from "./IssueCard";
+import api from "../../api/axiosConfig";
+import IssueCard from "../IssueCard";
 
 const STATUS_ORDER = { resolved: 0, in_progress: 1, open: 2 };
 

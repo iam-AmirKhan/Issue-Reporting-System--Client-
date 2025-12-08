@@ -1,13 +1,16 @@
 import BannerSlider from "../Home/BannerSlider";
 import Features from "./Features";
-import LatestIssues from "./LatestIssues";
+import LatestResolvedSection from "./LatestResolvedSection";
+import Testimonials from "./Testimonials";
 
 const Home = () => {
   return (
     <div>
       <BannerSlider />
+      <LatestResolvedSection />
       <Features />
-      <LatestIssues />
+      <Testimonials />
+      
     </div>
   );
 };
