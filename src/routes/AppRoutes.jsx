@@ -6,7 +6,7 @@ import Login from "../components/Login";
 import AllIssues from "../pages/AllIssues";
 import Profile from "../components/Profile";
 import PrivateRoute from "../components/PrivateRoute";
-
+import IssueDetails from "../pages/IssueDetails";
 
 const router = createBrowserRouter([
   {
@@ -14,7 +14,7 @@ const router = createBrowserRouter([
     element: <MainLayout />,
     children: [
       {
-        index:true,
+        index: true,
         element: <Home />,
       },
       {
@@ -29,7 +29,7 @@ const router = createBrowserRouter([
         path: "/all-issues",
         element: <AllIssues />,
       },
-       {
+      {
         path: "/profile",
         element: (
           <PrivateRoute>
@@ -37,7 +37,14 @@ const router = createBrowserRouter([
           </PrivateRoute>
         ),
       },
-    
+      {
+        path: "/issues/:id",
+        element: (
+          <PrivateRoute>
+            <IssueDetails />
+          </PrivateRoute>
+        ),
+      },
     ],
   },
 ]);
