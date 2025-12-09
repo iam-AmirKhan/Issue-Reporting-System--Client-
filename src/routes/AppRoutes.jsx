@@ -7,6 +7,12 @@ import AllIssues from "../pages/AllIssues";
 import Profile from "../components/Profile";
 import PrivateRoute from "../components/PrivateRoute";
 import IssueDetails from "../pages/IssueDetails";
+import DashboardLayout from "../layouts/DashBoardLayout";
+import Overview from "../pages/dashboard/Overview";
+import MyIssues from "../pages/dashboard/MyIssue";
+import Payments from "../pages/dashboard/Payments";
+import ProfileDashboard from "../pages/dashboard/ProfileDashboard";
+import NotFound from "../pages/NotFound";
 
 const router = createBrowserRouter([
   {
@@ -27,7 +33,11 @@ const router = createBrowserRouter([
       },
       {
         path: "/all-issues",
-        element: <AllIssues />,
+        element: <AllIssues  />,
+      },
+      {
+        path: "*",
+        element: <NotFound />,
       },
       {
         path: "/profile",
@@ -44,6 +54,20 @@ const router = createBrowserRouter([
             <IssueDetails />
           </PrivateRoute>
         ),
+      },
+      {
+        path: "/dashboard",
+        element: (
+          <PrivateRoute allowedRoles={["citizen", "staff", "admin"]}>
+            <DashboardLayout />
+          </PrivateRoute>
+        ),
+        children: [
+          { index: true, element: <Overview /> },
+          { path: "my-issues", element: <MyIssues /> },
+          { path: "payments", element: <Payments /> },
+          { path: "profile", element: <ProfileDashboard /> },
+        ],
       },
     ],
   },

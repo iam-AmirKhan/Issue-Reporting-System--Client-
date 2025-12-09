@@ -1,10 +1,8 @@
-
 import React, { useEffect, useState } from "react";
 import api from "../../api/axiosConfig";
 import IssueCard from "../IssueCard";
 
 const STATUS_ORDER = { resolved: 0, in_progress: 1, open: 2 };
-
 
 const MOCK_ISSUES = [
   {
@@ -15,7 +13,8 @@ const MOCK_ISSUES = [
     updatedAt: new Date().toISOString(),
     createdAt: new Date().toISOString(),
     location: "City Market",
-    image: "https://images.unsplash.com/photo-1508921912186-1d1a45ebb3c1?q=80&w=1400&auto=format&fit=crop",
+    image:
+      "https://images.unsplash.com/photo-1508921912186-1d1a45ebb3c1?q=80&w=1400&auto=format&fit=crop",
     reporterName: "Local Citizen",
   },
   {
@@ -26,7 +25,8 @@ const MOCK_ISSUES = [
     updatedAt: new Date().toISOString(),
     createdAt: new Date().toISOString(),
     location: "Block A",
-    image: "https://images.unsplash.com/photo-1497493292307-31c376b6e479?q=80&w=1400&auto=format&fit=crop",
+    image:
+      "https://images.unsplash.com/photo-1497493292307-31c376b6e479?q=80&w=1400&auto=format&fit=crop",
     reporterName: "Rina",
   },
   {
@@ -37,7 +37,8 @@ const MOCK_ISSUES = [
     updatedAt: new Date().toISOString(),
     createdAt: new Date().toISOString(),
     location: "Bus Stop",
-    image: "https://images.unsplash.com/photo-1509395176047-4a66953fd231?q=80&w=1400&auto=format&fit=crop",
+    image:
+      "https://images.unsplash.com/photo-1509395176047-4a66953fd231?q=80&w=1400&auto=format&fit=crop",
     reporterName: "Jamal",
   },
   {
@@ -48,7 +49,8 @@ const MOCK_ISSUES = [
     updatedAt: new Date().toISOString(),
     createdAt: new Date().toISOString(),
     location: "Main Rd",
-    image: "https://images.unsplash.com/photo-1505691723518-36a89b3a53b3?q=80&w=1400&auto=format&fit=crop",
+    image:
+      "https://images.unsplash.com/photo-1505691723518-36a89b3a53b3?q=80&w=1400&auto=format&fit=crop",
     reporterName: "Ayesha",
   },
   {
@@ -59,7 +61,8 @@ const MOCK_ISSUES = [
     updatedAt: new Date().toISOString(),
     createdAt: new Date().toISOString(),
     location: "Near School",
-    image: "https://images.unsplash.com/photo-1508873699372-7ae9b5d8c8a9?q=80&w=1400&auto=format&fit=crop",
+    image:
+      "https://images.unsplash.com/photo-1508873699372-7ae9b5d8c8a9?q=80&w=1400&auto=format&fit=crop",
     reporterName: "Community",
   },
   {
@@ -70,7 +73,8 @@ const MOCK_ISSUES = [
     updatedAt: new Date().toISOString(),
     createdAt: new Date().toISOString(),
     location: "Junction 4",
-    image: "https://images.unsplash.com/photo-1455380572553-8696bFAf26d8?q=80&w=1400&auto=format&fit=crop",
+    image:
+      "https://images.unsplash.com/photo-1455380572553-8696bFAf26d8?q=80&w=1400&auto=format&fit=crop",
     reporterName: "Officer",
   },
 ];
@@ -83,24 +87,22 @@ export default function LatestResolvedSection({ minShow = 6 }) {
   useEffect(() => {
     let mounted = true;
     setLoading(true);
+
     api
       .get("/api/issues?limit=12")
       .then((res) => {
         if (!mounted) return;
-        const data = Array.isArray(res.data) ? res.data : [];
-        // sort by status order then by updatedAt desc
+        const data = Array.isArray(res.data) ? res.data : Array.isArray(res.data?.issues) ? res.data.issues : [];
         data.sort((a, b) => {
           const s = (STATUS_ORDER[a.status] ?? 9) - (STATUS_ORDER[b.status] ?? 9);
           if (s !== 0) return s;
-          return new Date(b.updatedAt) - new Date(a.updatedAt);
+          return new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt);
         });
 
-        // if backend returned fewer than minShow, fill with mock issues
         const take = data.slice(0, minShow);
         if (take.length < minShow) {
-          // concat enough MOCK_ISSUES that are not duplicates
           const needed = minShow - take.length;
-          const extras = MOCK_ISSUES.filter(m => !data.find(d => d.id === m.id)).slice(0, needed);
+          const extras = MOCK_ISSUES.filter((m) => !data.find((d) => d.id === m.id)).slice(0, needed);
           setIssues([...take, ...extras]);
         } else {
           setIssues(take);
@@ -109,12 +111,15 @@ export default function LatestResolvedSection({ minShow = 6 }) {
       .catch((err) => {
         console.error(err);
         setError(err);
-        // on error, show mock data instead of blank
         setIssues(MOCK_ISSUES.slice(0, minShow));
       })
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (mounted) setLoading(false);
+      });
 
-    return () => (mounted = false);
+    return () => {
+      mounted = false;
+    };
   }, [minShow]);
 
   if (loading) return <div className="py-12 text-center">Loading latest issues...</div>;
