@@ -28,6 +28,7 @@ const Navbar = () => {
       <li><NavLink to="/all-issues">All Issues</NavLink></li>
       <li><NavLink to="/report-issue">Report Issue</NavLink></li>
       {user && <li><NavLink to="/dashboard">Dashboard</NavLink></li>}
+      {user && <li><NavLink to="/profile">Profile</NavLink></li>}
     </>
   );
 

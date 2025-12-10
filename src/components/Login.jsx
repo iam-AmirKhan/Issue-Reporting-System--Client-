@@ -13,7 +13,7 @@ export default function Login() {
 
   const handleChange = (e) => setInfo({ ...info, [e.target.name]: e.target.value });
 
-  // helper to persist minimal normalized user shape
+  // helper to persist minimal normalized user shape if auth returns raw
   const persistUser = (rawUser) => {
     if (!rawUser) return;
     const normalized = {
@@ -22,10 +22,9 @@ export default function Login() {
       email: rawUser.email || "",
       role: rawUser.role || "citizen",
       contact: rawUser.contact || "",
-      // include any tokens if you use them:
       token: rawUser.token || rawUser.accessToken || null,
     };
-    localStorage.setItem("user", JSON.stringify(normalized));
+    try { localStorage.setItem("user", JSON.stringify(normalized)); } catch {}
     return normalized;
   };
 
@@ -34,30 +33,20 @@ export default function Login() {
     if (!info.email || !info.password) return Swal.fire("Error", "Please enter email and password", "error");
     setLoading(true);
     try {
-      // Expectation: login(email, password) should return a user object or an auth result.
-      // If your AuthContext.login doesn't return, uncomment the fetch-profile fallback below.
       const authResult = await login(info.email, info.password);
 
-      // try to get a user object from the returned result
       const returnedUser =
         authResult && (authResult.user || authResult) ? (authResult.user || authResult) : null;
 
       if (returnedUser) {
         persistUser(returnedUser);
       } else {
-        // fallback: if your auth system sets cookie/session and you have an endpoint to fetch current user
-        // try to fetch it — enable this if your backend provides /api/auth/me
-        // const me = await api.get('/api/auth/me', { withCredentials: true });
-        // persistUser(me.data.user || me.data);
-
-        // If you cannot fetch a profile, at least store the email so pages don't immediately redirect:
         persistUser({ email: info.email, id: info.email });
       }
 
       Swal.fire("Success", "Login successful", "success");
       navigate("/profile");
     } catch (err) {
-      // map firebase errors to friendly messages
       const code = err?.code || "";
       let message = "Login failed";
       if (code.includes("user-not-found")) message = "User not found. Please register first.";
