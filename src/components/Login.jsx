@@ -1,3 +1,4 @@
+// src/pages/Login.jsx
 import React, { useState, useContext } from "react";
 import { useNavigate } from "react-router-dom";
 import Swal from "sweetalert2";
@@ -12,12 +13,47 @@ export default function Login() {
 
   const handleChange = (e) => setInfo({ ...info, [e.target.name]: e.target.value });
 
+  // helper to persist minimal normalized user shape
+  const persistUser = (rawUser) => {
+    if (!rawUser) return;
+    const normalized = {
+      id: rawUser.id || rawUser.uid || rawUser._id || rawUser.userId || rawUser.email,
+      name: rawUser.name || rawUser.displayName || rawUser.fullName || "",
+      email: rawUser.email || "",
+      role: rawUser.role || "citizen",
+      contact: rawUser.contact || "",
+      // include any tokens if you use them:
+      token: rawUser.token || rawUser.accessToken || null,
+    };
+    localStorage.setItem("user", JSON.stringify(normalized));
+    return normalized;
+  };
+
   const handleEmailLogin = async (e) => {
     e.preventDefault();
     if (!info.email || !info.password) return Swal.fire("Error", "Please enter email and password", "error");
     setLoading(true);
     try {
-      await login(info.email, info.password);
+      // Expectation: login(email, password) should return a user object or an auth result.
+      // If your AuthContext.login doesn't return, uncomment the fetch-profile fallback below.
+      const authResult = await login(info.email, info.password);
+
+      // try to get a user object from the returned result
+      const returnedUser =
+        authResult && (authResult.user || authResult) ? (authResult.user || authResult) : null;
+
+      if (returnedUser) {
+        persistUser(returnedUser);
+      } else {
+        // fallback: if your auth system sets cookie/session and you have an endpoint to fetch current user
+        // try to fetch it — enable this if your backend provides /api/auth/me
+        // const me = await api.get('/api/auth/me', { withCredentials: true });
+        // persistUser(me.data.user || me.data);
+
+        // If you cannot fetch a profile, at least store the email so pages don't immediately redirect:
+        persistUser({ email: info.email, id: info.email });
+      }
+
       Swal.fire("Success", "Login successful", "success");
       navigate("/profile");
     } catch (err) {
@@ -36,7 +72,9 @@ export default function Login() {
 
   const handleGoogle = async () => {
     try {
-      await loginWithGoogle();
+      const authResult = await loginWithGoogle();
+      const returnedUser = authResult && (authResult.user || authResult) ? (authResult.user || authResult) : null;
+      if (returnedUser) persistUser(returnedUser);
       Swal.fire("Success", "Google sign-in successful", "success");
       navigate("/profile");
     } catch (err) {

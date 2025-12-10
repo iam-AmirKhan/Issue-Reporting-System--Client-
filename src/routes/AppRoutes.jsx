@@ -33,7 +33,7 @@ const router = createBrowserRouter([
       },
       {
         path: "/all-issues",
-        element: <AllIssues  />,
+        element: <AllIssues />,
       },
       {
         path: "*",
@@ -48,10 +48,10 @@ const router = createBrowserRouter([
         ),
       },
       {
-        path: "/issues/:id",
+        path: "/issue/:id",
         element: (
           <PrivateRoute>
-            <IssueDetails />
+            <IssueDetails />,
           </PrivateRoute>
         ),
       },
