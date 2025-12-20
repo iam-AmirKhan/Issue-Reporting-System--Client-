@@ -1,4 +1,3 @@
-// src/pages/AllIssues.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import api from "../api/axiosConfig";
 import IssueCard from "../components/IssueCards";
@@ -51,11 +50,20 @@ export default function AllIssues({ currentUser }) {
           const pA = (a.priority || "normal") === "high" ? 0 : 1;
           const pB = (b.priority || "normal") === "high" ? 0 : 1;
           if (pA !== pB) return pA - pB;
-          const statusOrder = { pending: 0, in_progress: 1, open: 2, resolved: 3, closed: 4 };
+          const statusOrder = {
+            pending: 0,
+            in_progress: 1,
+            open: 2,
+            resolved: 3,
+            closed: 4,
+          };
           const sA = statusOrder[a.status] ?? 99;
           const sB = statusOrder[b.status] ?? 99;
           if (sA !== sB) return sA - sB;
-          return new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt);
+          return (
+            new Date(b.updatedAt || b.createdAt) -
+            new Date(a.updatedAt || a.createdAt)
+          );
         });
 
         setIssues(data);
@@ -76,7 +84,9 @@ export default function AllIssues({ currentUser }) {
   // derive filter options from loaded issues (normalized)
   const categories = useMemo(() => {
     const set = new Set();
-    issues.forEach((it) => set.add(normalizeValue(it.category || "uncategorized")));
+    issues.forEach((it) =>
+      set.add(normalizeValue(it.category || "uncategorized"))
+    );
     return ["all", ...Array.from(set).filter(Boolean)];
   }, [issues]);
 
@@ -101,9 +111,12 @@ export default function AllIssues({ currentUser }) {
       const st = normalizeValue(it.status || "open");
       const pr = normalizeValue(it.priority || "normal");
 
-      if (categoryFilter !== "all" && cat !== normalizeValue(categoryFilter)) return false;
-      if (statusFilter !== "all" && st !== normalizeValue(statusFilter)) return false;
-      if (priorityFilter !== "all" && pr !== normalizeValue(priorityFilter)) return false;
+      if (categoryFilter !== "all" && cat !== normalizeValue(categoryFilter))
+        return false;
+      if (statusFilter !== "all" && st !== normalizeValue(statusFilter))
+        return false;
+      if (priorityFilter !== "all" && pr !== normalizeValue(priorityFilter))
+        return false;
 
       if (!q) return true;
 
@@ -124,7 +137,10 @@ export default function AllIssues({ currentUser }) {
   }, [issues, debouncedSearch, categoryFilter, statusFilter, priorityFilter]);
 
   if (loading) return <div className="p-8 text-center">Loading issues...</div>;
-  if (error && !issues.length) return <div className="p-8 text-center text-red-600">Failed to load issues.</div>;
+  if (error && !issues.length)
+    return (
+      <div className="p-8 text-center text-red-600">Failed to load issues.</div>
+    );
 
   return (
     <div className="container mx-auto p-6">
@@ -184,7 +200,9 @@ export default function AllIssues({ currentUser }) {
             issue={issue}
             currentUser={currentUser}
             onUpvoted={(updatedIssue) => {
-              setIssues((prev) => prev.map((p) => (p.id === updatedIssue.id ? updatedIssue : p)));
+              setIssues((prev) =>
+                prev.map((p) => (p.id === updatedIssue.id ? updatedIssue : p))
+              );
             }}
           />
         ))}

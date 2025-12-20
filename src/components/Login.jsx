@@ -1,4 +1,3 @@
-// src/pages/Login.jsx
 import React, { useState, useContext } from "react";
 import { useNavigate } from "react-router-dom";
 import Swal from "sweetalert2";
@@ -13,7 +12,6 @@ export default function Login() {
 
   const handleChange = (e) => setInfo({ ...info, [e.target.name]: e.target.value });
 
-  // helper to persist minimal normalized user shape if auth returns raw
   const persistUser = (rawUser) => {
     if (!rawUser) return;
     const normalized = {
@@ -45,7 +43,7 @@ export default function Login() {
       }
 
       Swal.fire("Success", "Login successful", "success");
-      navigate("/profile");
+      navigate("/");
     } catch (err) {
       const code = err?.code || "";
       let message = "Login failed";
