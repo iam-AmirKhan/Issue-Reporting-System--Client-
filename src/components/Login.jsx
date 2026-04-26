@@ -1,57 +1,38 @@
-import React, { useState, useContext } from "react";
-import { useNavigate } from "react-router-dom";
-import Swal from "sweetalert2";
+import { useContext, useState } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { AuthContext } from "../context/AuthContext";
+import { motion } from "framer-motion";
+import Swal from "sweetalert2";
 
 export default function Login() {
   const { login, loginWithGoogle } = useContext(AuthContext);
+  const location = useLocation();
   const navigate = useNavigate();
 
-  const [info, setInfo] = useState({ email: "", password: "" });
+  const [form, setForm] = useState({ email: "", password: "" });
   const [loading, setLoading] = useState(false);
 
-  const handleChange = (e) => setInfo({ ...info, [e.target.name]: e.target.value });
+  const from = location.state?.from?.pathname || "/";
 
-  const persistUser = (rawUser) => {
-    if (!rawUser) return;
-    const normalized = {
-      id: rawUser.id || rawUser.uid || rawUser._id || rawUser.userId || rawUser.email,
-      name: rawUser.name || rawUser.displayName || rawUser.fullName || "",
-      email: rawUser.email || "",
-      role: rawUser.role || "citizen",
-      contact: rawUser.contact || "",
-      token: rawUser.token || rawUser.accessToken || null,
-    };
-    try { localStorage.setItem("user", JSON.stringify(normalized)); } catch {}
-    return normalized;
-  };
-
-  const handleEmailLogin = async (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!info.email || !info.password) return Swal.fire("Error", "Please enter email and password", "error");
     setLoading(true);
     try {
-      const authResult = await login(info.email, info.password);
-
-      const returnedUser =
-        authResult && (authResult.user || authResult) ? (authResult.user || authResult) : null;
-
-      if (returnedUser) {
-        persistUser(returnedUser);
-      } else {
-        persistUser({ email: info.email, id: info.email });
-      }
-
-      Swal.fire("Success", "Login successful", "success");
-      navigate("/");
+      await login(form.email, form.password);
+      Swal.fire({
+         title: 'Success!',
+         text: 'You have successfully logged in.',
+         icon: 'success',
+         timer: 1500,
+         showConfirmButton: false
+      });
+      navigate(from, { replace: true });
     } catch (err) {
-      const code = err?.code || "";
-      let message = "Login failed";
-      if (code.includes("user-not-found")) message = "User not found. Please register first.";
-      else if (code.includes("wrong-password")) message = "Incorrect password. Try again.";
-      else if (code.includes("too-many-requests")) message = "Too many failed attempts. Try later.";
-      else message = err?.message || message;
-      Swal.fire("Error", message, "error");
+      Swal.fire({
+         title: 'Login Failed',
+         text: err.message || 'Check your credentials and try again.',
+         icon: 'error'
+      });
     } finally {
       setLoading(false);
     }
@@ -59,62 +40,97 @@ export default function Login() {
 
   const handleGoogle = async () => {
     try {
-      const authResult = await loginWithGoogle();
-      const returnedUser = authResult && (authResult.user || authResult) ? (authResult.user || authResult) : null;
-      if (returnedUser) persistUser(returnedUser);
-      Swal.fire("Success", "Google sign-in successful", "success");
-      navigate("/profile");
+      await loginWithGoogle();
+      Swal.fire({
+         title: 'Welcome!',
+         text: 'Logged in with Google successfully.',
+         icon: 'success',
+         timer: 1500,
+         showConfirmButton: false
+      });
+      navigate(from, { replace: true });
     } catch (err) {
-      Swal.fire("Error", err?.message || "Google sign-in failed", "error");
+      Swal.fire({
+         title: 'Google Login Failed',
+         text: err.message,
+         icon: 'error'
+      });
     }
   };
 
   return (
-    <div className="max-w-md mx-auto mt-8 p-6 border rounded">
-      <h2 className="text-2xl font-semibold mb-4">Login</h2>
+    <div className="min-h-screen flex items-center justify-center bg-slate-900 px-4 relative overflow-hidden">
+      
+      {/* Decorative Blob */}
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-emerald-500/20 rounded-full blur-[100px] pointer-events-none"></div>
 
-      <form onSubmit={handleEmailLogin}>
-        <label className="block mb-2">
-          <span className="text-sm">Email</span>
-          <input
-            name="email"
-            type="email"
-            value={info.email}
-            onChange={handleChange}
-            className="w-full mt-1 p-2 border rounded"
-            placeholder="you@example.com"
-          />
-        </label>
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 0.4 }}
+        className="w-full max-w-md bg-white/10 backdrop-blur-xl border border-white/20 rounded-3xl shadow-2xl overflow-hidden relative z-10"
+      >
+        <div className="p-8 sm:p-10">
+          <div className="text-center mb-10">
+            <h1 className="text-3xl font-extrabold text-white mb-2">Welcome Back</h1>
+            <p className="text-slate-300 text-sm">Sign in to your account and continue contributing to your community.</p>
+          </div>
 
-        <label className="block mb-4">
-          <span className="text-sm">Password</span>
-          <input
-            name="password"
-            type="password"
-            value={info.password}
-            onChange={handleChange}
-            className="w-full mt-1 p-2 border rounded"
-            placeholder="Your password"
-          />
-        </label>
+          <button 
+            onClick={handleGoogle} 
+            className="w-full flex items-center justify-center gap-3 bg-white hover:bg-slate-50 text-slate-800 font-bold py-3 px-4 rounded-xl transition-colors mb-6 shadow-sm"
+          >
+            <img src="https://www.svgrepo.com/show/475656/google-color.svg" alt="Google" className="w-5 h-5" />
+            Sign in with Google
+          </button>
 
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full bg-blue-600 text-white py-2 rounded mb-3"
-        >
-          {loading ? "Logging in..." : "Login"}
-        </button>
-      </form>
+          <div className="flex items-center gap-4 mb-6">
+            <div className="flex-1 h-px bg-slate-700"></div>
+            <span className="text-slate-400 text-xs font-semibold uppercase tracking-wider">or sign in with email</span>
+            <div className="flex-1 h-px bg-slate-700"></div>
+          </div>
 
-      <div className="text-center">
-        <button
-          onClick={handleGoogle}
-          className="w-full bg-red-500 text-white py-2 rounded"
-        >
-          Sign in with Google
-        </button>
-      </div>
+          <form onSubmit={handleSubmit} className="space-y-5">
+            <div>
+              <label className="block text-sm font-semibold text-slate-300 mb-1.5">Email Address</label>
+              <input 
+                required 
+                type="email" 
+                value={form.email}
+                onChange={e => setForm({...form, email: e.target.value})}
+                placeholder="you@example.com"
+                className="w-full bg-slate-800/50 border border-slate-700 text-white placeholder-slate-500 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-slate-300 mb-1.5">Password</label>
+              <input 
+                required 
+                type="password" 
+                value={form.password}
+                onChange={e => setForm({...form, password: e.target.value})}
+                placeholder="••••••••"
+                className="w-full bg-slate-800/50 border border-slate-700 text-white placeholder-slate-500 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all"
+              />
+            </div>
+            
+            <button 
+              type="submit" 
+              disabled={loading}
+              className="w-full bg-emerald-500 hover:bg-emerald-400 text-white font-bold py-3.5 px-4 rounded-xl transition-all shadow-lg shadow-emerald-500/30 disabled:opacity-50 mt-4"
+            >
+              {loading ? "Signing In..." : "Sign In"}
+            </button>
+          </form>
+
+          <div className="mt-8 text-center text-sm text-slate-400">
+            Don't have an account?{" "}
+            <Link to="/register" className="text-emerald-400 font-bold hover:underline">
+              Create one now
+            </Link>
+          </div>
+        </div>
+      </motion.div>
     </div>
   );
 }

@@ -1,2 +1,73 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap");
 @import "tailwindcss";
 @plugin "daisyui";
+
+/* ── Design tokens ─────────────────────────────────────── */
+:root {
+  --color-brand:       #10b981;  /* emerald-500  */
+  --color-brand-dark:  #059669;  /* emerald-600  */
+  --color-brand-light: #d1fae5;  /* emerald-100  */
+  --color-navy:        #0f172a;  /* slate-900    */
+  --color-navy-mid:    #1e293b;  /* slate-800    */
+  --color-navy-soft:   #334155;  /* slate-700    */
+  --color-surface:     #f8fafc;  /* slate-50     */
+  --color-amber:       #f59e0b;
+  --color-rose:        #f43f5e;
+  --radius-card:       1rem;
+  --shadow-card:       0 4px 24px rgba(0,0,0,.08);
+  --shadow-card-hover: 0 8px 40px rgba(0,0,0,.16);
+}
+
+/* ── Base ──────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  font-family: "Inter", sans-serif;
+  background-color: var(--color-surface);
+  color: #1e293b;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Custom scrollbar ──────────────────────────────────── */
+::-webkit-scrollbar        { width: 6px; }
+::-webkit-scrollbar-track  { background: transparent; }
+::-webkit-scrollbar-thumb  { background: #cbd5e1; border-radius: 9999px; }
+::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+/* ── Status badge colours ──────────────────────────────── */
+.badge-pending    { background: #fef3c7; color: #92400e; }
+.badge-in_progress { background: #dbeafe; color: #1e40af; }
+.badge-working    { background: #ede9fe; color: #5b21b6; }
+.badge-resolved   { background: #d1fae5; color: #065f46; }
+.badge-closed     { background: #f1f5f9; color: #475569; }
+.badge-rejected   { background: #fee2e2; color: #991b1b; }
+
+/* ── Priority badge colours ────────────────────────────── */
+.badge-high   { background: #fee2e2; color: #991b1b; }
+.badge-normal { background: #f1f5f9; color: #475569; }
+
+/* ── Animate fade-up ───────────────────────────────────── */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(18px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-up { animation: fadeUp .5s ease both; }
+
+/* ── Glass card ────────────────────────────────────────── */
+.glass {
+  background: rgba(255,255,255,.7);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255,255,255,.4);
+  border-radius: var(--radius-card);
+}
+
+/* ── Gradient text ─────────────────────────────────────── */
+.gradient-text {
+  background: linear-gradient(135deg, #10b981, #3b82f6);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}

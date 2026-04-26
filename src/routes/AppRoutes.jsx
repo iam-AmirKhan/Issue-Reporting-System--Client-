@@ -7,14 +7,21 @@ import AllIssues from "../pages/AllIssues";
 import Profile from "../components/Profile";
 import PrivateRoute from "../components/PrivateRoute";
 import IssueDetails from "../pages/IssueDetails";
-import DashboardLayout from "../layouts/DashBoardLayout";
+import DashboardLayout from "../layouts/DashboardLayout";
 
 import ProfileDashboard from "../pages/dashboard/ProfileDashboard";
 import NotFound from "../pages/NotFound";
 import Dashboard from "../pages/dashboard/Dashboard";
-import EditIssueModal from "../pages/dashboard/EditIssueModal";
 import ReportIssue from "../pages/dashboard/ReportIssue";
 import MyIssues from "../pages/dashboard/MyIssues";
+
+import AssignedIssues from "../pages/dashboard/AssignedIssues";
+import ManageIssues from "../pages/dashboard/ManageIssues";
+import ManageUsers from "../pages/dashboard/ManageUsers";
+import ManageStaff from "../pages/dashboard/ManageStaff";
+import Payments from "../pages/dashboard/Payments";
+import HowItWorksPage from "../pages/HowItWorksPage";
+import CommunityPage from "../pages/CommunityPage";
 
 const router = createBrowserRouter([
   {
@@ -38,6 +45,14 @@ const router = createBrowserRouter([
         element: <AllIssues />,
       },
       {
+        path: "/how-it-works",
+        element: <HowItWorksPage />,
+      },
+      {
+        path: "/community",
+        element: <CommunityPage />,
+      },
+      {
         path: "*",
         element: <NotFound />,
       },
@@ -53,7 +68,7 @@ const router = createBrowserRouter([
         path: "/issue/:id",
         element: (
           <PrivateRoute>
-            <IssueDetails />,
+            <IssueDetails />
           </PrivateRoute>
         ),
       },
@@ -66,10 +81,63 @@ const router = createBrowserRouter([
         ),
         children: [
           { index: true, element: <Dashboard /> },
-          { path: "my-issues", element: <MyIssues /> },
-          { path: "edit-issue-modal", element: <EditIssueModal /> },
+          {
+            path: "my-issues",
+            element: (
+              <PrivateRoute allowedRoles={["citizen"]}>
+                <MyIssues />
+              </PrivateRoute>
+            ),
+          },
           { path: "profile-dashboard", element: <ProfileDashboard /> },
-          { path: "report-issue", element: <ReportIssue /> },
+          {
+            path: "report-issue",
+            element: (
+              <PrivateRoute allowedRoles={["citizen"]}>
+                <ReportIssue />
+              </PrivateRoute>
+            ),
+          },
+          {
+            path: "assigned-issues",
+            element: (
+              <PrivateRoute allowedRoles={["staff"]}>
+                <AssignedIssues />
+              </PrivateRoute>
+            ),
+          },
+          {
+            path: "manage-issues",
+            element: (
+              <PrivateRoute allowedRoles={["admin"]}>
+                <ManageIssues />
+              </PrivateRoute>
+            ),
+          },
+          {
+            path: "manage-users",
+            element: (
+              <PrivateRoute allowedRoles={["admin"]}>
+                <ManageUsers />
+              </PrivateRoute>
+            ),
+          },
+          {
+            path: "manage-staff",
+            element: (
+              <PrivateRoute allowedRoles={["admin"]}>
+                <ManageStaff />
+              </PrivateRoute>
+            ),
+          },
+          {
+            path: "payments",
+            element: (
+              <PrivateRoute allowedRoles={["admin"]}>
+                <Payments />
+              </PrivateRoute>
+            ),
+          },
         ],
       },
     ],

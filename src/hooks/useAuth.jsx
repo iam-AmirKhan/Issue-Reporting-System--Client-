@@ -9,7 +9,9 @@ export default function useAuth() {
     try {
       const raw = localStorage.getItem("user");
       if (raw) user = JSON.parse(raw);
-    } catch {}
+    } catch {
+      user = null;
+    }
   }
   return { user, loading: ctx?.loading };
 }

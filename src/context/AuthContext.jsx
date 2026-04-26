@@ -1,4 +1,3 @@
-// src/context/AuthContext.jsx
 import React, { createContext, useEffect, useState } from "react";
 import { auth, googleProvider, storage } from "../../firebase.config";
 import {
@@ -10,18 +9,36 @@ import {
   updateProfile,
 } from "firebase/auth";
 import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
-import axios from "axios";
-
+import api from "../api/axiosConfig";
 export const AuthContext = createContext();
 
 function normalizeFirebaseUser(fbUser) {
   if (!fbUser) return null;
   return {
     id: fbUser.uid || fbUser.id || fbUser.userId,
+    uid: fbUser.uid || fbUser.id || fbUser.userId,
+    _id: fbUser._id,
     name: fbUser.displayName || fbUser.name || "",
     email: fbUser.email || "",
     photoURL: fbUser.photoURL || "",
     role: fbUser.role || "citizen",
+    isPremium: !!fbUser.isPremium,
+    isBlocked: !!(fbUser.isBlocked || fbUser.blocked),
+    blocked: !!(fbUser.isBlocked || fbUser.blocked),
+  };
+}
+
+function mergeAppUser(firebaseUser, appUser) {
+  if (!appUser) return firebaseUser;
+  return {
+    ...firebaseUser,
+    ...appUser,
+    id: appUser.id || appUser._id || firebaseUser.id,
+    uid: firebaseUser.uid || firebaseUser.id,
+    photoURL: appUser.photoURL || firebaseUser.photoURL || "",
+    role: appUser.role || firebaseUser.role || "citizen",
+    isBlocked: !!(appUser.isBlocked || appUser.blocked),
+    blocked: !!(appUser.isBlocked || appUser.blocked),
   };
 }
 
@@ -33,13 +50,20 @@ export default function AuthProvider({ children }) {
     const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
       if (!fbUser) {
         setUser(null);
-        try { localStorage.removeItem("user"); } catch {}
+        try { localStorage.removeItem("user"); } catch { /* storage cleanup is best effort */ }
         setLoading(false);
         return;
       }
       const normalized = normalizeFirebaseUser(fbUser);
-      setUser(normalized);
-      try { localStorage.setItem("user", JSON.stringify(normalized)); } catch (err) { console.warn(err); }
+      let appUser = normalized;
+      try {
+        const { data } = await api.get("/api/users/me");
+        appUser = mergeAppUser(normalized, data);
+      } catch (err) {
+        console.warn("[Auth] backend profile fetch failed", err);
+      }
+      setUser(appUser);
+      try { localStorage.setItem("user", JSON.stringify(appUser)); } catch (err) { console.warn(err); }
       setLoading(false);
     });
     return () => unsubscribe();
@@ -53,7 +77,7 @@ export default function AuthProvider({ children }) {
       console.log("[Auth] created user uid=", uid);
 
       // debug: show what SDK thinks the bucket is
-      try { console.log("[Storage] SDK storageBucket:", storage?.app?.options?.storageBucket); } catch (e) {}
+      try { console.log("[Storage] SDK storageBucket:", storage?.app?.options?.storageBucket); } catch { /* debug log is best effort */ }
 
       let photoURL = "";
 
@@ -102,13 +126,20 @@ export default function AuthProvider({ children }) {
 
       // send to backend (best-effort)
       try {
-        await axios.post("/api/users", {
+        const { data } = await api.post("/api/users", {
           uid,
           name,
           email: result.user.email,
           photoURL: photoURL || result.user.photoURL || "",
           role: "citizen",
         });
+        const savedUser = data?.user || data?.data;
+        if (savedUser) {
+          const merged = mergeAppUser(normalizeFirebaseUser(result.user), savedUser);
+          setUser(merged);
+          try { localStorage.setItem("user", JSON.stringify(merged)); } catch (err) { console.warn(err); }
+          return merged;
+        }
       } catch (err) {
         console.warn("[Backend] save user failed", err);
       }
@@ -132,9 +163,15 @@ export default function AuthProvider({ children }) {
   // login and persist normalized user
   const login = async (email, password) => {
     const cred = await signInWithEmailAndPassword(auth, email, password);
-    const normalized = normalizeFirebaseUser(cred.user);
+    let normalized = normalizeFirebaseUser(cred.user);
+    try {
+      const { data } = await api.get("/api/users/me");
+      normalized = mergeAppUser(normalized, data);
+    } catch (err) {
+      console.warn("[Auth] backend profile fetch failed", err);
+    }
     setUser(normalized);
-    try { localStorage.setItem("user", JSON.stringify(normalized)); } catch {}
+    try { localStorage.setItem("user", JSON.stringify(normalized)); } catch { /* local cache is best effort */ }
     return cred;
   };
 
@@ -144,19 +181,26 @@ export default function AuthProvider({ children }) {
     const normalized = normalizeFirebaseUser(fbUser);
 
     try {
-      await axios.post("/api/users", {
+      const { data } = await api.post("/api/users", {
         uid: fbUser.uid,
         name: fbUser.displayName || "",
         email: fbUser.email,
         photoURL: fbUser.photoURL || "",
         role: "citizen",
       });
+      const savedUser = data?.user || data?.data;
+      if (savedUser) {
+        const merged = mergeAppUser(normalized, savedUser);
+        setUser(merged);
+        try { localStorage.setItem("user", JSON.stringify(merged)); } catch { /* local cache is best effort */ }
+        return res;
+      }
     } catch (err) {
       console.warn("Failed to save Google user to backend:", err);
     }
 
     setUser(normalized);
-    try { localStorage.setItem("user", JSON.stringify(normalized)); } catch {}
+    try { localStorage.setItem("user", JSON.stringify(normalized)); } catch { /* local cache is best effort */ }
     return res;
   };
 
@@ -165,7 +209,7 @@ export default function AuthProvider({ children }) {
       await signOut(auth);
     } finally {
       setUser(null);
-      try { localStorage.removeItem("user"); } catch {}
+      try { localStorage.removeItem("user"); } catch { /* storage cleanup is best effort */ }
     }
   };
 

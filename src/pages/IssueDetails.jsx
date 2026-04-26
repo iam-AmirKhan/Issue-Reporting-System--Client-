@@ -1,439 +1,467 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useContext, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../api/axiosConfig";
+import Swal from "sweetalert2";
+import { AuthContext } from "../context/AuthContext";
 
-
-const nowISO = () => new Date().toISOString();
 const formatDate = (s) => {
   if (!s) return "—";
   try { return new Date(s).toLocaleString(); } catch { return s; }
 };
 
-
-function getUserFromStorage() {
-  try {
-    const raw = localStorage.getItem("user");
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    if (!parsed) return null;
-    if (!parsed.id && !parsed.email) return null;
-    return parsed;
-  } catch {
-    return null;
-  }
-}
-
-export default function IssueDetails({ currentUser: propUser }) {
+export default function IssueDetails() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const { user: currentUser } = useContext(AuthContext);
 
-
-  const [checkingAuth, setCheckingAuth] = useState(true);
-  const [currentUser, setCurrentUser] = useState(propUser || null);
-
-  useEffect(() => {
-    if (propUser) {
-      setCurrentUser(propUser);
-      setCheckingAuth(false);
-      return;
-    }
-    const restored = getUserFromStorage();
-    setCurrentUser(restored);
-    setCheckingAuth(false);
-  }, [propUser]);
-
-  useEffect(() => {
-    if (!checkingAuth && !currentUser) {
-      navigate("/login", { replace: true });
-    }
-  }, [checkingAuth, currentUser, navigate]);
-
-
-  const [issue, setIssue] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [actionBusy, setActionBusy] = useState(false);
   const [timelineMessage, setTimelineMessage] = useState("");
   const [statusToSet, setStatusToSet] = useState("");
   const [assignStaffId, setAssignStaffId] = useState("");
-  const [availableStaff, setAvailableStaff] = useState([]);
-  const [showEditProfile, setShowEditProfile] = useState(false);
-  const [profileForm, setProfileForm] = useState({ name: "", contact: "" });
 
+  // Fetch Issue Details
+  const { data: issue, isLoading, isError } = useQuery({
+    queryKey: ["issue", id],
+    queryFn: async () => {
+      const res = await api.get(`/api/issues/${id}`);
+      return res.data?.issue || res.data;
+    },
+    enabled: !!id,
+  });
 
-  useEffect(() => {
-    if (checkingAuth) return;
-    let mounted = true;
-    setLoading(true);
+  // Fetch Available Staff for Admin
+  const { data: availableStaff = [] } = useQuery({
+    queryKey: ["staff"],
+    queryFn: async () => {
+      const res = await api.get("/api/staff");
+      return Array.isArray(res.data) ? res.data : (res.data.staff || res.data.data || []);
+    },
+    enabled: currentUser?.role === "admin",
+  });
 
-    api.get(`/api/issues/${id}`)
-      .then((res) => {
-        if (!mounted) return;
-        const payload = res.data && (res.data.issue || res.data);
-        setIssue(payload);
-      })
-      .catch((err) => {
-        console.error("Failed to load issue:", err);
-        alert("Issue not found or failed to load.");
-        navigate("/", { replace: true });
-      })
-      .finally(() => mounted && setLoading(false));
-
-    api.get("/api/staff")
-      .then((res) => {
-        if (!mounted) return;
-        const list = Array.isArray(res.data) ? res.data : (res.data.staff || []);
-        setAvailableStaff(list);
-      })
-      .catch(() => { /* ignore staff fetch failure */ });
-
-    if (currentUser) setProfileForm({ name: currentUser.name || "", contact: currentUser.contact || "" });
-
-    return () => (mounted = false);
-  }, [id, navigate, currentUser, checkingAuth]);
-
-
-  const isOwner = useMemo(() => {
-    if (!currentUser || !issue) return false;
-    return issue.createdBy === currentUser.id || issue.reporterId === currentUser.id;
-  }, [currentUser, issue]);
-
+  // Check roles
+  const currentUserIds = [currentUser?.id, currentUser?._id, currentUser?.uid].filter(Boolean).map(String);
+  const issueOwnerIds = [issue?.createdBy, issue?.submitterId, issue?.reporterId].filter(Boolean).map(String);
+  const isOwner = currentUser && issue && issueOwnerIds.some((ownerId) => currentUserIds.includes(ownerId));
   const canEdit = isOwner && issue && (issue.status === "pending" || issue.status === "open");
   const canDelete = isOwner && !!issue;
-  const canBoost = currentUser && currentUser.role === "citizen" && issue && !issue.boosted;
+  const canBoost = currentUser && currentUser.role === "citizen" && !currentUser.blocked && !currentUser.isBlocked && issue && !issue.boosted;
   const isAdmin = currentUser && currentUser.role === "admin";
   const isStaff = currentUser && currentUser.role === "staff";
 
-  // refresh issue
-  const refresh = async () => {
-    try {
-      const res = await api.get(`/api/issues/${id}`);
-      const payload = res.data && (res.data.issue || res.data);
-      setIssue(payload);
-    } catch (err) {
-      console.error("refresh failed", err);
+  // Mutations
+  const timelineMutation = useMutation({
+    mutationFn: async (entry) => await api.post(`/api/issues/${id}/timeline`, entry),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["issue", id] }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async () => await api.delete(`/api/issues/${id}`),
+    onSuccess: () => {
+      Swal.fire("Deleted!", "The issue has been removed.", "success");
+      navigate("/all-issues");
+      queryClient.invalidateQueries({ queryKey: ["all-issues"] });
+      queryClient.invalidateQueries({ queryKey: ["my-issues"] });
+    },
+    onError: () => Swal.fire("Error", "Failed to delete issue.", "error"),
+  });
+
+  const actionMutation = useMutation({
+    mutationFn: async ({ action, payload }) => {
+      if (action === "boost") return await api.post(`/api/issues/${id}/boost`, payload);
+      if (action === "assign") return await api.post(`/api/issues/${id}/assign`, payload);
+      if (action === "reject") return await api.post(`/api/issues/${id}/reject`);
+      if (action === "status") return await api.put(`/api/issues/${id}`, payload);
+    },
+    onSuccess: (data, variables) => {
+      let msg = "Action successful.";
+      if (variables.action === "boost") msg = "Issue boosted to high priority!";
+      if (variables.action === "assign") msg = "Staff assigned successfully.";
+      if (variables.action === "reject") msg = "Issue rejected.";
+      if (variables.action === "status") msg = "Status updated.";
+      
+      Swal.fire("Success", msg, "success");
+      queryClient.invalidateQueries({ queryKey: ["issue", id] });
+      getRelatedQueriesToInvalidate().forEach(q => queryClient.invalidateQueries({ queryKey: q }));
+      
+      // Clear forms
+      if (variables.action === "assign") setAssignStaffId("");
+      if (variables.action === "status") setStatusToSet("");
+    },
+    onError: (err) => {
+      Swal.fire("Error", err.response?.data?.message || "Action failed.", "error");
     }
+  });
+
+  const getRelatedQueriesToInvalidate = () => {
+    return [["all-issues"], ["dashboard-stats"], ["my-issues"], ["assigned-issues"]];
   };
 
-  // helper: post timeline entry and optimistic prepend
-  const postTimeline = async ({ status, message, role = currentUser?.role || "Citizen", updatedBy = currentUser?.name || currentUser?.id }) => {
-    const entry = { status, message, role, updatedBy, timestamp: nowISO() };
-    try {
-      await api.post(`/api/issues/${id}/timeline`, entry);
-      setIssue((prev) => prev ? { ...prev, timeline: [entry, ...(prev.timeline || [])] } : prev);
-      return true;
-    } catch (err) {
-      console.error("post timeline failed", err);
-      return false;
-    }
-  };
-
-  // DELETE
-  const handleDelete = async () => {
-    if (!confirm("Delete this issue? This cannot be undone.")) return;
-    setActionBusy(true);
-    try {
-      await api.delete(`/api/issues/${id}`);
-      await postTimeline({ status: "deleted", message: `Issue deleted by ${currentUser.name || currentUser.id}`, role: currentUser.role || "Citizen" });
-      alert("Issue deleted.");
-      navigate("/issues");
-    } catch (err) {
-      console.error(err);
-      alert("Delete failed.");
-    } finally {
-      setActionBusy(false);
-    }
-  };
-
-  // EDIT -> navigate to edit page
-  const handleEdit = () => navigate(`/issues/${id}/edit`);
-
-  // BOOST (trigger payment on backend)
-  const handleBoost = async () => {
-    if (!canBoost) return alert("You cannot boost this issue.");
-    if (!confirm("Boost this issue for 100 TK? Proceed to payment?")) return;
-    setActionBusy(true);
-    try {
-      const res = await api.post(`/api/issues/${id}/boost`, { amount: 100 });
-      const updated = res.data && (res.data.issue || res.data);
-      if (updated) setIssue(updated);
-      else await refresh();
-      await postTimeline({ status: "boosted", message: `Boosted by ${currentUser.name || currentUser.id} (100 TK)`, role: currentUser.role || "Citizen" });
-      alert("Boost successful — priority set to High.");
-    } catch (err) {
-      console.error(err);
-      alert("Boost/payment failed.");
-    } finally {
-      setActionBusy(false);
-    }
-  };
-
-  // ASSIGN staff (admin)
-  const handleAssign = async () => {
-    if (!isAdmin || !assignStaffId) return alert("Select staff to assign.");
-    setActionBusy(true);
-    try {
-      const res = await api.post(`/api/issues/${id}/assign`, { staffId: assignStaffId });
-      const updated = res.data && (res.data.issue || res.data);
-      if (updated) setIssue(updated);
-      else await refresh();
-      await postTimeline({ status: "assigned", message: `Assigned to staff ${assignStaffId}`, role: "Admin" });
-      alert("Assigned.");
-      setAssignStaffId("");
-    } catch (err) {
-      console.error(err);
-      alert("Assign failed.");
-    } finally {
-      setActionBusy(false);
-    }
-  };
-
-  // REJECT (admin)
-  const handleReject = async () => {
-    if (!isAdmin) return;
-    if (!confirm("Reject this issue?")) return;
-    setActionBusy(true);
-    try {
-      await api.post(`/api/issues/${id}/reject`);
-      await postTimeline({ status: "rejected", message: `Rejected by ${currentUser.name || currentUser.id}`, role: "Admin" });
-      alert("Rejected.");
-      await refresh();
-    } catch (err) {
-      console.error(err);
-      alert("Reject failed.");
-    } finally {
-      setActionBusy(false);
-    }
-  };
-
-  // Staff/Admin change status
-  const handleChangeStatus = async (newStatus) => {
-    if (!(isAdmin || isStaff)) return alert("Not permitted.");
-    if (!newStatus) return;
-    if (!confirm(`Change status to ${newStatus}?`)) return;
-    setActionBusy(true);
-    try {
-      const res = await api.put(`/api/issues/${id}`, { status: newStatus });
-      const updated = res.data && (res.data.issue || res.data);
-      if (updated) setIssue(updated);
-      else await refresh();
-      await postTimeline({ status: newStatus, message: `Status set to ${newStatus} by ${currentUser.name || currentUser.id}`, role: isAdmin ? "Admin" : "Staff" });
-      alert("Status updated.");
-    } catch (err) {
-      console.error(err);
-      alert("Status update failed.");
-    } finally {
-      setActionBusy(false);
-    }
-  };
-
-  // Add note to timeline
-  const handleAddNote = async () => {
-    const msg = timelineMessage?.trim();
-    if (!msg) return alert("Write a note first.");
-    setActionBusy(true);
-    try {
-      const ok = await postTimeline({ status: "note", message: msg, role: currentUser.role || "Citizen" });
-      if (ok) {
-        setTimelineMessage("");
-        alert("Note added.");
-      } else {
-        alert("Failed to add note.");
+  // Handlers using SweetAlert
+  const handleDelete = () => {
+    Swal.fire({
+      title: 'Are you sure?',
+      text: "You won't be able to revert this!",
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#ef4444',
+      cancelButtonColor: '#64748b',
+      confirmButtonText: 'Yes, delete it!'
+    }).then((result) => {
+      if (result.isConfirmed) {
+        deleteMutation.mutate();
+        // Fire timeline event before deleting assuming backend handles timeline logic if deleted
       }
-    } catch (err) {
-      console.error(err);
-      alert("Failed to add note.");
-    } finally {
-      setActionBusy(false);
-    }
+    });
   };
 
-  // Edit profile save (PUT /api/users/:id)
-  const handleProfileSave = async () => {
-    if (!currentUser) return;
-    setActionBusy(true);
-    try {
-      const res = await api.put(`/api/users/${currentUser.id}`, { name: profileForm.name, contact: profileForm.contact });
-      const updated = res.data && (res.data.user || res.data);
-      if (updated) {
-        const merged = { ...(currentUser || {}), ...updated };
-        localStorage.setItem("user", JSON.stringify(merged));
-        setCurrentUser(merged);
-        setShowEditProfile(false);
-        alert("Profile updated.");
-      } else alert("Profile update returned no data.");
-    } catch (err) {
-      console.error(err);
-      alert("Profile update failed.");
-    } finally {
-      setActionBusy(false);
-    }
+  const handleBoost = () => {
+    Swal.fire({
+      title: 'Boost Issue',
+      text: "Boost priority to HIGH for 100 TK?",
+      icon: 'info',
+      showCancelButton: true,
+      confirmButtonColor: '#f59e0b',
+      cancelButtonColor: '#64748b',
+      confirmButtonText: 'Pay 100 TK'
+    }).then((result) => {
+      if (result.isConfirmed) {
+        actionMutation.mutate({ action: "boost", payload: { amount: 100 } });
+        timelineMutation.mutate({ status: "boosted", message: "Priority boosted via payment", role: "Citizen" });
+      }
+    });
   };
 
-  if (checkingAuth || loading) return <div className="p-8 text-center">Loading...</div>;
-  if (!issue) return null;
+  const handleAssign = () => {
+    if (!assignStaffId) return Swal.fire("Wait", "Select a staff member first.", "warning");
+    actionMutation.mutate({ action: "assign", payload: { staffId: assignStaffId } });
+    const selectedStaffName = availableStaff.find(s => s.id === assignStaffId || s._id === assignStaffId)?.name || 'Staff';
+    timelineMutation.mutate({ status: "assigned", message: `Assigned to ${selectedStaffName}`, role: "Admin" });
+  };
 
-  const imageSrc = issue.image || (issue.photos && issue.photos[0] && (issue.photos[0].url || issue.photos[0])) || "/placeholder.png";
-  const timeline = (issue.timeline || []).slice().sort((a, b) => new Date(b.timestamp || b.time || b.date || 0) - new Date(a.timestamp || a.time || a.date || 0));
+  const handleReject = () => {
+    Swal.fire({
+      title: 'Reject Issue?',
+      text: "This will mark the issue securely as rejected and notify the citizen.",
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#ef4444',
+      confirmButtonText: 'Reject'
+    }).then((result) => {
+      if (result.isConfirmed) {
+        actionMutation.mutate({ action: "reject" });
+        timelineMutation.mutate({ status: "rejected", message: "Issue rejected by administration", role: "Admin" });
+      }
+    });
+  };
+
+  const handleChangeStatus = () => {
+    if (!statusToSet) return;
+    Swal.fire({
+      title: 'Update Status',
+      text: `Change status to ${statusToSet}?`,
+      icon: 'question',
+      showCancelButton: true,
+      confirmButtonColor: '#4f46e5',
+      confirmButtonText: 'Update'
+    }).then((result) => {
+      if (result.isConfirmed) {
+        actionMutation.mutate({ action: "status", payload: { status: statusToSet } });
+        timelineMutation.mutate({ 
+          status: statusToSet, 
+          message: `Status changed to ${statusToSet}`, 
+          role: isAdmin ? "Admin" : "Staff" 
+        });
+      }
+    });
+  };
+
+  const handleAddNote = () => {
+    if (!timelineMessage.trim()) return Swal.fire("Empty Note", "Please write something.", "info");
+    timelineMutation.mutate({ status: "note", message: timelineMessage, role: currentUser?.role || "Citizen" }, {
+      onSuccess: () => {
+        setTimelineMessage("");
+        Swal.fire({ title: "Note Added", icon: "success", timer: 1500, showConfirmButton: false });
+      }
+    });
+  };
+
+  if (isLoading) return (
+    <div className="flex justify-center items-center min-h-[50vh]">
+      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-500"></div>
+    </div>
+  );
+  if (isError || !issue) return (
+    <div className="text-center py-20 text-slate-500">
+      <h2 className="text-2xl font-bold text-rose-500 mb-2">Issue Not Found</h2>
+      <Link to="/all-issues" className="text-blue-500 hover:underline">Return to issues list</Link>
+    </div>
+  );
+
+  const imageSrc = issue.image || (issue.photos && issue.photos[0]?.url) || "/placeholder.png";
+  const timeline = (issue.timeline || []).slice().sort((a, b) => new Date(b.timestamp || b.time || b.date || b.createdAt || 0) - new Date(a.timestamp || a.time || a.date || a.createdAt || 0));
 
   return (
-    <div className="container mx-auto p-6 max-w-6xl">
-      <div className="mb-4">
-        <button onClick={() => navigate(-1)} className="text-blue-600 underline">← Back</button>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* MAIN */}
-        <main className="lg:col-span-2 bg-white rounded-lg shadow p-6">
-          <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+    <div className="bg-slate-50 min-h-screen pb-12">
+      {/* ── Header Area ── */}
+      <div className="bg-slate-900 border-b border-slate-800 pt-8 pb-32">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <Link to="/all-issues" className="text-emerald-400 hover:text-emerald-300 font-medium inline-flex items-center gap-1 mb-6 transition-colors">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+            </svg>
+            Back to issues
+          </Link>
+          <div className="flex flex-col md:flex-row md:items-start justify-between gap-6">
             <div>
-              <h1 className="text-2xl font-bold text-black">{issue.title}</h1>
-              <p className="text-sm text-black mt-1">{issue.category || "Uncategorized"} • {issue.location || "—"}</p>
-
-              <div className="mt-3 flex flex-wrap items-center gap-2">
-                <span className={`text-xs px-2 py-1 rounded ${issue.boosted ? "bg-yellow-200 text-black" : "bg-gray-200 text-black"}`}>{issue.boosted ? "Boosted" : "Not boosted"}</span>
-                <span className={`text-xs px-2 py-1 rounded ${issue.priority === "high" ? "bg-red-200 text-black" : "bg-gray-200 text-black"}`}>Priority: {issue.priority || "normal"}</span>
-                <span className={`text-xs px-2 py-1 rounded ${issue.status === "resolved" ? "bg-green-200 text-black" : "bg-gray-200 text-black"}`}>Status: {issue.status || "—"}</span>
+              <div className="flex items-center gap-3 mb-3">
+                <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase ${
+                  issue.status === "resolved" ? "bg-emerald-500 text-white" :
+                  issue.status === "in_progress" || issue.status === "working" ? "bg-blue-500 text-white" :
+                  issue.status === "closed" ? "bg-slate-600 text-white" :
+                  "bg-amber-500 text-white"
+                }`}>
+                  {issue.status?.replace("_", " ") || "PENDING"}
+                </span>
+                {issue.priority === "high" && (
+                   <span className="px-3 py-1 bg-rose-500 text-white rounded-full text-xs font-bold">URGENT</span>
+                )}
+                {issue.boosted && (
+                   <span className="px-3 py-1 bg-amber-400 text-black rounded-full text-xs font-bold flex items-center gap-1 shadow-[0_0_15px_rgba(251,191,36,0.5)]">
+                     <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.381z"/></svg>
+                     BOOSTED
+                   </span>
+                )}
+              </div>
+              <h1 className="text-3xl md:text-5xl font-extrabold text-white leading-tight">{issue.title}</h1>
+              <div className="flex items-center gap-4 text-slate-400 mt-4 text-sm font-medium">
+                <span className="flex items-center gap-1.5">
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+                  </svg>
+                  {issue.category || "General"}
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                  {issue.location || "Unknown location"}
+                </span>
               </div>
             </div>
-
-            <div className="flex items-start gap-2">
-              {canEdit && <button onClick={handleEdit} className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm">Edit</button>}
-              {canDelete && <button onClick={handleDelete} disabled={actionBusy} className="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-sm">Delete</button>}
-              {canBoost && <button onClick={handleBoost} disabled={actionBusy} className="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-sm">Boost (100 TK)</button>}
-            </div>
-          </div>
-
-          <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <img src={imageSrc} alt={issue.title} className="w-full h-64 object-cover rounded" />
-            </div>
-
-            <div>
-              <h3 className="font-semibold text-black">Description</h3>
-              <p className="mt-2 text-sm text-black whitespace-pre-line">{issue.description || "No description provided."}</p>
-
-              <div className="mt-4 text-sm text-black">
-                <div><strong>Reported by:</strong> {issue.reporterName || issue.createdBy || "Anonymous"}</div>
-                {issue.reporterContact && <div className="text-xs text-slate-600">Contact: {issue.reporterContact}</div>}
-              </div>
-
-              <div className="mt-4">
-                <strong className="text-sm text-black">Upvotes:</strong> <span className="text-black">{issue.upvoteCount ?? (issue.upvoters ? issue.upvoters.length : 0)}</span>
-              </div>
-
-              {isAdmin && (
-                <div className="mt-4 border-t pt-4">
-                  <h4 className="font-medium text-black">Admin actions</h4>
-                  <div className="mt-2 flex gap-2 items-center">
-                    <select value={assignStaffId} onChange={(e) => setAssignStaffId(e.target.value)} className="border rounded px-2 py-1">
-                      <option value="">Assign staff</option>
-                      {availableStaff.map((s) => <option key={s.id || s._id} value={s.id || s._id}>{s.name || s.id}</option>)}
-                    </select>
-                    <button onClick={handleAssign} disabled={actionBusy} className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1 rounded text-sm">Assign</button>
-                    <button onClick={handleReject} disabled={actionBusy} className="bg-rose-600 hover:bg-rose-700 text-white px-3 py-1 rounded text-sm">Reject</button>
-                  </div>
-                </div>
+            
+            {/* Action buttons (Owner / Citizen) */}
+            <div className="flex flex-wrap gap-3 md:justify-end shrink-0">
+              {canEdit && (
+                <Link to="/dashboard/my-issues" className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white text-sm font-medium rounded-lg transition-colors shadow">
+                  Edit Issue
+                </Link>
+              )}
+              {canDelete && (
+                <button onClick={handleDelete} className="px-4 py-2 bg-rose-500/10 hover:bg-rose-500 text-rose-500 hover:text-white border border-rose-500 text-sm font-medium rounded-lg transition-all shadow">
+                  Delete
+                </button>
+              )}
+              {canBoost && (
+                <button onClick={handleBoost} disabled={actionMutation.isPending} className="px-6 py-2 bg-amber-400 hover:bg-amber-500 text-amber-950 text-sm font-bold shadow-[0_0_15px_rgba(251,191,36,0.3)] rounded-lg transition-all transform hover:scale-105">
+                  ⚡ Boost Priority (100 TK)
+                </button>
               )}
             </div>
           </div>
+        </div>
+      </div>
 
-          {/* Add update */}
-          <div className="mt-6 border-t pt-4">
-            <h3 className="text-lg font-semibold text-black">Add update</h3>
-            <div className="mt-3 flex flex-col gap-2">
-              <textarea value={timelineMessage} onChange={(e) => setTimelineMessage(e.target.value)} placeholder="Write a progress update or note..." className="border rounded px-3 py-2 w-full" rows={3} />
-              <div className="flex items-center gap-2">
-                {(isStaff || isAdmin) && (
-                  <>
-                    <select value={statusToSet} onChange={(e) => setStatusToSet(e.target.value)} className="border rounded px-2 py-1">
-                      <option value="">(Change status)</option>
-                      <option value="pending">Pending</option>
-                      <option value="in_progress">In-Progress</option>
-                      <option value="resolved">Resolved</option>
-                      <option value="closed">Closed</option>
-                    </select>
-                    <button onClick={() => statusToSet && handleChangeStatus(statusToSet)} disabled={actionBusy || !statusToSet} className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1 rounded text-sm">Update status</button>
-                  </>
-                )}
-
-                <button onClick={handleAddNote} disabled={actionBusy || !timelineMessage.trim()} className="bg-gray-800 hover:bg-black text-white px-3 py-1 rounded text-sm">Add note</button>
-              </div>
-            </div>
-          </div>
-        </main>
-
-        {/* ASIDE */}
-        <aside className="bg-white rounded-lg shadow p-6">
-          <div>
-            <h3 className="text-lg font-semibold text-black">Assigned staff</h3>
-            {issue.assignedStaff ? (
-              <div className="mt-3 flex items-center gap-3">
-                <img src={issue.assignedStaff.avatar || "/avatar-placeholder.png"} alt={issue.assignedStaff.name} className="h-12 w-12 rounded-full object-cover" />
-                <div>
-                  <div className="font-medium text-black">{issue.assignedStaff.name}</div>
-                  <div className="text-xs text-slate-600">{issue.assignedStaff.contact || issue.assignedStaff.email || ""}</div>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 -mt-24">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          
+          {/* ── Left Column: Media & Description ── */}
+          <div className="lg:col-span-2 space-y-8">
+            <div className="bg-white rounded-2xl shadow-xl overflow-hidden border border-slate-100">
+              <div className="relative aspect-video bg-slate-100">
+                <img src={imageSrc} alt={issue.title} className="w-full h-full object-cover" />
+                <div className="absolute bottom-4 right-4 bg-black/60 backdrop-blur-md px-3 py-1 rounded-full text-white text-xs font-medium flex items-center gap-1.5 shadow">
+                  <svg className="w-4 h-4 text-emerald-400" fill="currentColor" viewBox="0 0 20 20"><path d="M2 10.5a1.5 1.5 0 113 0v6a1.5 1.5 0 01-3 0v-6zM6 10.333v5.43a2 2 0 001.106 1.79l.05.025A4 4 0 008.943 18h5.416a2 2 0 001.962-1.608l1.2-6A2 2 0 0015.56 8H12V4a2 2 0 00-2-2 1 1 0 00-1 1v.667a4 4 0 01-.8 2.4L6.8 7.933a4 4 0 00-.8 2.4z" /></svg>
+                  {issue.upvoteCount ?? (issue.upvoters ? issue.upvoters.length : 0)} Upvotes
                 </div>
               </div>
-            ) : (
-              <div className="mt-3 text-sm text-black">No staff assigned yet.</div>
-            )}
-          </div>
-
-          {/* Profile edit */}
-          <div className="mt-6 border-t pt-4">
-            <div className="flex items-center justify-between">
-              <h4 className="text-lg font-semibold text-black">Your profile</h4>
-              <button onClick={() => setShowEditProfile((s) => !s)} className="text-sm text-blue-600 underline">{showEditProfile ? "Cancel" : "Edit profile"}</button>
-            </div>
-
-            {!showEditProfile ? (
-              <div className="mt-3 text-sm text-black">
-                <div><strong>Name:</strong> {currentUser?.name || "—"}</div>
-                <div className="text-xs text-slate-600"><strong>Contact:</strong> {currentUser?.contact || "—"}</div>
-                <div className="text-xs text-slate-600"><strong>Role:</strong> {currentUser?.role || "citizen"}</div>
-              </div>
-            ) : (
-              <div className="mt-3">
-                <label className="block text-sm text-black">Name</label>
-                <input className="w-full border rounded px-2 py-1 mt-1" value={profileForm.name} onChange={(e) => setProfileForm((p) => ({ ...p, name: e.target.value }))} />
-                <label className="block text-sm text-black mt-2">Contact</label>
-                <input className="w-full border rounded px-2 py-1 mt-1" value={profileForm.contact} onChange={(e) => setProfileForm((p) => ({ ...p, contact: e.target.value }))} />
-                <div className="mt-3 flex gap-2">
-                  <button disabled={actionBusy} onClick={handleProfileSave} className="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-sm">Save</button>
-                  <button disabled={actionBusy} onClick={() => { setShowEditProfile(false); setProfileForm({ name: currentUser?.name || "", contact: currentUser?.contact || "" }); }} className="bg-gray-200 px-3 py-1 rounded text-sm">Cancel</button>
+              <div className="p-8">
+                <h3 className="text-xl font-bold text-slate-800 mb-4">Description</h3>
+                <p className="text-slate-600 leading-relaxed whitespace-pre-line text-[15px]">
+                  {issue.description || "No detailed description provided."}
+                </p>
+                
+                <div className="mt-8 pt-6 border-t border-slate-100 flex items-center gap-4">
+                   <div className="w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center text-slate-500 font-bold">
+                     {(issue.reporterName?.[0] || "A").toUpperCase()}
+                   </div>
+                   <div>
+                     <p className="text-sm font-medium text-slate-800">Reported by {issue.reporterName || issue.createdBy || "Anonymous Citizen"}</p>
+                     <p className="text-xs text-slate-500">{formatDate(issue.createdAt || issue.created)}</p>
+                   </div>
                 </div>
               </div>
-            )}
-          </div>
+            </div>
 
-          {/* TIMELINE */}
-          <div className="mt-6">
-            <h4 className="text-lg font-semibold text-black">Timeline ({timeline.length})</h4>
-            <div className="mt-3 space-y-3">
-              {timeline.length === 0 && <div className="text-sm text-black">No timeline events yet.</div>}
-              {timeline.map((t, idx) => (
-                <div key={idx} className="bg-gray-50 p-3 rounded">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className={`text-xs px-2 py-1 rounded ${t.status === "resolved" ? "bg-green-200 text-black" : t.status === "in_progress" ? "bg-blue-200 text-black" : t.status === "pending" ? "bg-yellow-200 text-black" : "bg-gray-200 text-black"}`}>
-                        {t.status || "note"}
-                      </span>
-                      <div className="text-sm font-medium text-black">{t.updatedBy || "System"}</div>
-                      <div className="text-xs text-slate-600">({t.role || "—"})</div>
+            {/* Admin Management Panel */}
+            {isAdmin && (
+              <div className="bg-white rounded-2xl shadow-sm border border-indigo-100 overflow-hidden">
+                <div className="bg-indigo-50 px-6 py-4 border-b border-indigo-100">
+                  <h3 className="text-indigo-900 font-bold flex items-center gap-2">
+                    <svg className="w-5 h-5 text-indigo-600" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" /></svg>
+                    Admin Controls
+                  </h3>
+                </div>
+                <div className="p-6">
+                  <div className="flex flex-col md:flex-row gap-4">
+                    <div className="flex-1">
+                      <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Assign Staff</label>
+                      <div className="flex gap-2">
+                        <select 
+                          value={assignStaffId} 
+                          onChange={(e) => setAssignStaffId(e.target.value)}
+                          className="flex-1 bg-slate-50 border border-slate-200 text-slate-700 text-sm rounded-lg focus:ring-indigo-500 focus:border-indigo-500 block p-2.5"
+                        >
+                          <option value="">Choose staff member...</option>
+                          {availableStaff.map((s) => (
+                            <option key={s.id || s._id} value={s.id || s._id}>{s.name} ({s.email || "staff"})</option>
+                          ))}
+                        </select>
+                        <button onClick={handleAssign} disabled={actionMutation.isPending || !assignStaffId} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-medium rounded-lg text-sm transition-colors shadow">
+                          Assign
+                        </button>
+                      </div>
                     </div>
-                    <div className="text-xs text-slate-600">{formatDate(t.timestamp || t.time || t.date || t.createdAt)}</div>
+                    {issue.status === "pending" && (
+                      <div className="md:border-l md:border-slate-100 md:pl-6 md:w-1/3 flex items-end">
+                        <button onClick={handleReject} disabled={actionMutation.isPending} className="w-full px-4 py-2 bg-white border-2 border-rose-500 text-rose-500 hover:bg-rose-50 font-medium rounded-lg text-sm transition-colors">
+                          Reject Issue
+                        </button>
+                      </div>
+                    )}
                   </div>
-                  <div className="mt-2 text-sm text-black">{t.message}</div>
                 </div>
-              ))}
-            </div>
+              </div>
+            )}
           </div>
 
-          <div className="mt-6 text-xs text-slate-600">
-            <div>Created: {formatDate(issue.createdAt || issue.created)}</div>
-            <div>Updated: {formatDate(issue.updatedAt)}</div>
+          {/* ── Right Column: Timeline & Progress ── */}
+          <div className="space-y-6 lg:mt-0">
+            
+            {/* Staff Assigned Stats */}
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+              <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider mb-4">Handling Staff</h3>
+              {issue.assignedStaff ? (
+                <div className="flex items-center gap-4">
+                  <img src={issue.assignedStaff.avatar || "https://ui-avatars.com/api/?name=" + issue.assignedStaff.name} alt={issue.assignedStaff.name} className="w-12 h-12 rounded-full border border-slate-200" />
+                  <div>
+                    <h4 className="font-bold text-slate-800">{issue.assignedStaff.name}</h4>
+                    <p className="text-xs text-slate-500">Contact: {issue.assignedStaff.contact || issue.assignedStaff.email || "N/A"}</p>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center gap-3 text-slate-500 bg-slate-50 px-4 py-3 rounded-xl border border-dashed border-slate-200">
+                  <svg className="w-5 h-5 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                  <span className="text-sm font-medium">No staff assigned yet.</span>
+                </div>
+              )}
+            </div>
+
+            {/* Post Update (Staff/Admin/Citizen) */}
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 relative overflow-hidden">
+               <div className="absolute top-0 left-0 w-1 h-full bg-emerald-500"></div>
+               <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider mb-4">Post an Update</h3>
+               <textarea 
+                 value={timelineMessage} 
+                 onChange={(e) => setTimelineMessage(e.target.value)}
+                 placeholder="Add a progress note, question, or updates to the timeline..."
+                 className="w-full bg-slate-50 border border-slate-200 text-slate-700 text-sm rounded-xl focus:ring-emerald-500 focus:border-emerald-500 block p-3 min-h-[100px] mb-3 resize-none"
+               />
+               <div className="flex flex-col sm:flex-row gap-2">
+                 {(isStaff || isAdmin) && (
+                   <select 
+                     value={statusToSet} 
+                     onChange={(e) => setStatusToSet(e.target.value)}
+                     className="bg-white border border-slate-200 text-slate-700 text-sm rounded-lg focus:ring-emerald-500 focus:border-emerald-500 block p-2 shadow-sm flex-1 cursor-pointer"
+                   >
+                     <option value="">Change status to...</option>
+                     <option value="pending">Mark Pending</option>
+                     <option value="in_progress">Mark In-Progress</option>
+                     <option value="resolved">Mark Resolved</option>
+                     <option value="closed">Mark Closed</option>
+                   </select>
+                 )}
+                 {(isStaff || isAdmin) && statusToSet ? (
+                   <button onClick={handleChangeStatus} disabled={actionMutation.isPending} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-medium rounded-lg text-sm transition-colors shadow-sm">
+                     Update Status
+                   </button>
+                 ) : (
+                   <button onClick={handleAddNote} disabled={timelineMutation.isPending || !timelineMessage.trim()} className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white font-medium rounded-lg text-sm transition-colors shadow-sm w-full">
+                     Add to Timeline
+                   </button>
+                 )}
+               </div>
+            </div>
+
+            {/* Timeline UI */}
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+              <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider mb-6 flex items-center gap-2">
+                <svg className="w-4 h-4 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                Issue Timeline
+              </h3>
+              
+              <div className="flow-root">
+                <ul role="list" className="-mb-8">
+                  {timeline.length === 0 ? (
+                    <li className="pb-8">
+                      <p className="text-sm text-slate-500 italic text-center">No timeline events recorded.</p>
+                    </li>
+                  ) : timeline.map((event, eventIdx) => (
+                    <li key={event._id || eventIdx}>
+                      <div className="relative pb-8">
+                        {eventIdx !== timeline.length - 1 ? (
+                          <span className="absolute top-4 left-4 -ml-px h-full w-0.5 bg-slate-200" aria-hidden="true" />
+                        ) : null}
+                        <div className="relative flex space-x-3">
+                          <div>
+                            <span className={`h-8 w-8 rounded-full flex items-center justify-center ring-8 ring-white ${
+                              event.status === 'resolved' ? 'bg-emerald-500' :
+                              event.status === 'in_progress' || event.status === 'assigned' ? 'bg-blue-500' :
+                              event.status === 'rejected' ? 'bg-rose-500' :
+                              event.status === 'boosted' ? 'bg-amber-400' :
+                              'bg-slate-400'
+                            }`}>
+                              {event.status === 'resolved' ? <svg className="h-4 w-4 text-white" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" /></svg> : 
+                               event.status === 'assigned' ? <svg className="h-4 w-4 text-white" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" /></svg> :
+                               event.status === 'boosted' ? <svg className="h-4 w-4 text-white" fill="currentColor" viewBox="0 0 20 20"><path d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.381z"/></svg> :
+                               <svg className="h-4 w-4 text-white" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" /></svg>}
+                            </span>
+                          </div>
+                          <div className="flex min-w-0 flex-1 justify-between space-x-4 pt-1.5">
+                            <div>
+                              <p className="text-sm text-slate-800">
+                                {event.message}{' '}
+                                <span className="font-medium text-slate-900 border-b border-dashed border-slate-300">
+                                  by {event.updatedBy || event.role || "System"}
+                                </span>
+                              </p>
+                            </div>
+                            <div className="whitespace-nowrap text-right text-xs text-slate-500 font-medium">
+                              <time dateTime={event.timestamp || event.createdAt}>{formatDate(event.timestamp || event.createdAt)}</time>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+
           </div>
-        </aside>
+        </div>
       </div>
     </div>
   );
