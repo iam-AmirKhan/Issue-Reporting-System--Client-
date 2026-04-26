@@ -37,7 +37,7 @@ const Navbar = () => {
       <div className="max-w-6xl mx-auto flex items-center justify-between py-4 px-2">
 
         <Link to="/" className="text-xl font-bold">
-          Public Issue System
+          InfraCare
         </Link>
 
         <ul className="hidden md:flex space-x-6">{navItems}</ul>

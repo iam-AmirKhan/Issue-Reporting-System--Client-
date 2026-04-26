@@ -1,32 +1,50 @@
-import React, { useContext, useState } from "react";
-import { AuthContext } from "../../context/AuthContext";
+import { useQuery } from "@tanstack/react-query";
 import axios from "axios";
 
-export default function Profile() {
-  const { user } = useContext(AuthContext);
-  const [name, setName] = useState(user?.name || "");
-  const [msg, setMsg] = useState("");
+export default function ProfileDashboard() {
+  const { data: user, isLoading } = useQuery({
+    queryKey: ["auth-user"],
+    queryFn: async () => (await axios.get("/api/users/me")).data
+  });
 
-  async function save() {
-    try {
-      const base = import.meta.env.VITE_API_BASE || "http://localhost:5000";
-      const res = await axios.patch(`${base}/api/users/me`, { name });
-      setMsg("Profile updated");
-    } catch (err) {
-      setMsg("Update failed");
-    }
-  }
+  if (isLoading) return <p>Loading...</p>;
+
+  const subscribe = async () => {
+    const { data } = await axios.post("/api/payments/create-subscription-session");
+    window.location.href = data.paymentUrl;
+  };
 
   return (
-    <div>
-      <h3 className="font-semibold mb-4 text-black">Profile</h3>
-      <div className="max-w-md">
-        <label className="block text-sm text-black">Name</label>
-        <input value={name} onChange={e => setName(e.target.value)} className="w-full text-black p-2 border rounded mb-2" />
-        <div className="flex gap-2">
-          <button onClick={save} className="px-4 py-2 bg-blue-600 text-white rounded">Save</button>
+    <div className="p-6 max-w-lg mx-auto">
+      <h1 className=" text-black font-bold mb-4">Profile</h1>
+
+      {user.blocked && (
+        <div className="p-3 bg-red-200 text-black rounded mb-4">
+          You are blocked. Contact authorities.
         </div>
-        {msg && <p className="mt-2 text-sm">{msg}</p>}
+      )}
+
+      <div className="bg-white p-4 rounded shadow">
+        <p><b>Name:</b> {user.name}</p>
+        <p><b>Email:</b> {user.email}</p>
+
+        <p className="mt-2">
+          <b>Status:</b>{" "}
+          {user.isPremium ? (
+            <span className="text-green-600 font-bold">Premium</span>
+          ) : (
+            <span className="text-gray-600">Free User</span>
+          )}
+        </p>
+
+        {!user.isPremium && !user.blocked && (
+          <button
+            className="mt-4 px-4 py-2 bg-blue-600 text-white rounded"
+            onClick={subscribe}
+          >
+            Subscribe — 1000tk
+          </button>
+        )}
       </div>
     </div>
   );

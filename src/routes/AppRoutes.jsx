@@ -8,11 +8,13 @@ import Profile from "../components/Profile";
 import PrivateRoute from "../components/PrivateRoute";
 import IssueDetails from "../pages/IssueDetails";
 import DashboardLayout from "../layouts/DashBoardLayout";
-import Overview from "../pages/dashboard/Overview";
-import MyIssues from "../pages/dashboard/MyIssue";
-import Payments from "../pages/dashboard/Payments";
+
 import ProfileDashboard from "../pages/dashboard/ProfileDashboard";
 import NotFound from "../pages/NotFound";
+import Dashboard from "../pages/dashboard/Dashboard";
+import EditIssueModal from "../pages/dashboard/EditIssueModal";
+import ReportIssue from "../pages/dashboard/ReportIssue";
+import MyIssues from "../pages/dashboard/MyIssues";
 
 const router = createBrowserRouter([
   {
@@ -63,10 +65,11 @@ const router = createBrowserRouter([
           </PrivateRoute>
         ),
         children: [
-          { index: true, element: <Overview /> },
+          { index: true, element: <Dashboard /> },
           { path: "my-issues", element: <MyIssues /> },
-          { path: "payments", element: <Payments /> },
-          { path: "profile", element: <ProfileDashboard /> },
+          { path: "edit-issue-modal", element: <EditIssueModal /> },
+          { path: "profile-dashboard", element: <ProfileDashboard /> },
+          { path: "report-issue", element: <ReportIssue /> },
         ],
       },
     ],

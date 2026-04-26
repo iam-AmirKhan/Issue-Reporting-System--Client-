@@ -1,62 +1,71 @@
-import React, { useState } from "react";
-import axios from "axios";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-
-async function fetchMyIssues() {
-  const res = await axios.get(`${import.meta.env.VITE_API_BASE || "http://localhost:5000"}/api/issues/my`);
-  return res.data;
-}
+import axios from "axios";
+import { useState } from "react";
+import EditIssueModal from "./EditIssueModal";
 
 export default function MyIssues() {
   const qc = useQueryClient();
-  const { data, isLoading } = useQuery({ queryKey: ["myIssues"], queryFn: fetchMyIssues });
   const [editing, setEditing] = useState(null);
-  const editMut = useMutation({ mutationFn: ({ id, payload }) => axios.patch(`${import.meta.env.VITE_API_BASE || "http://localhost:5000"}/api/issues/${id}`, payload), onSuccess: ()=> qc.invalidateQueries({ queryKey: ["myIssues"] }) });
-  const delMut = useMutation({ mutationFn: (id)=> axios.delete(`${import.meta.env.VITE_API_BASE || "http://localhost:5000"}/api/issues/${id}`), onSuccess: ()=> qc.invalidateQueries({ queryKey: ["myIssues"] }) });
 
-  if (isLoading) return <div>Loading issues...</div>;
-  const issues = data?.issues || [];
+  const { data, isLoading } = useQuery({
+    queryKey: ["my-issues"],
+    queryFn: async () => (await axios.get("/api/issues?mine=true")).data
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id) => await axios.delete(`/api/issues/${id}`),
+    onSuccess: () => qc.invalidateQueries(["my-issues"])
+  });
+
+  if (isLoading) return <p>Loading...</p>;
 
   return (
-    <div>
-      <h3 className="font-semibold mb-4">My Issues</h3>
-      <div className="space-y-3">
-        {issues.length === 0 && <div>No issues yet.</div>}
-        {issues.map(it => (
-          <div key={it._id} className="p-3 border rounded flex justify-between items-center">
+    <div className="p-6">
+      <h1 className="text-xl text-black font-bold mb-4">My Issues</h1>
+
+      <div className="space-y-4">
+        {data?.map((issue) => (
+          <div
+            key={issue._id}
+            className="p-4 bg-white rounded shadow flex justify-between"
+          >
             <div>
-              <div className="font-semibold">{it.title}</div>
-              <div className="text-sm text-gray-600">{it.status}</div>
+              <h2 className="font-bold">{issue.title}</h2>
+              <p className="text-sm text-gray-600">{issue.status}</p>
             </div>
-            <div className="flex gap-2">
-              {it.status === "pending" && <button onClick={()=> setEditing(it)} className="px-3 py-1 bg-yellow-500 rounded">Edit</button>}
-              {it.status === "pending" && <button onClick={()=> { if(confirm("Delete?")) delMut.mutate(it._id); }} className="px-3 py-1 bg-red-500 text-white rounded">Delete</button>}
-              <a href={`/issues/${it._id}`} className="px-3 py-1 bg-blue-600 text-white rounded">View</a>
+
+            <div className="flex gap-3">
+              {issue.status === "pending" && (
+                <button
+                  className="px-3 py-1 bg-blue-500 text-white rounded"
+                  onClick={() => setEditing(issue)}
+                >
+                  Edit
+                </button>
+              )}
+
+              <button
+                className="px-3 py-1 bg-red-500 text-white rounded"
+                onClick={() => deleteMutation.mutate(issue._id)}
+              >
+                Delete
+              </button>
+
+              <a
+                href={`/issues/${issue._id}`}
+                className="px-3 py-1 bg-gray-700 text-white rounded"
+              >
+                View
+              </a>
             </div>
           </div>
         ))}
       </div>
 
-      {editing && <EditModal issue={editing} onClose={()=> setEditing(null)} onSave={(payload)=> { editMut.mutate({ id: editing._id, payload }); setEditing(null); }} />}
-    </div>
-  );
-}
-
-function EditModal({ issue, onClose, onSave }) {
-  const [title, setTitle] = useState(issue.title);
-  const [description, setDescription] = useState(issue.description);
-
-  return (
-    <div className="fixed inset-0 flex items-center justify-center bg-black/30">
-      <div className="bg-white p-6 rounded w-96">
-        <h4 className="font-semibold mb-3">Edit Issue</h4>
-        <input className="w-full p-2 border rounded mb-2" value={title} onChange={e=>setTitle(e.target.value)} />
-        <textarea className="w-full p-2 border rounded mb-2" value={description} onChange={e=>setDescription(e.target.value)} />
-        <div className="flex justify-end gap-2">
-          <button onClick={onClose} className="px-3 py-1">Cancel</button>
-          <button onClick={()=> onSave({ title, description })} className="px-3 py-1 bg-blue-600 text-white rounded">Save</button>
-        </div>
-      </div>
+      {/* Edit modal */}
+      {editing && (
+        <EditIssueModal issue={editing} onClose={() => setEditing(null)} />
+      )}
     </div>
   );
 }
