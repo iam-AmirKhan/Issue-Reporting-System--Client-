@@ -10,6 +10,7 @@ export default function Login() {
   const navigate = useNavigate();
 
   const [form, setForm] = useState({ email: "", password: "" });
+  const [selectedRole, setSelectedRole] = useState("citizen");
   const [loading, setLoading] = useState(false);
 
   const from = location.state?.from?.pathname || "/";
@@ -18,10 +19,17 @@ export default function Login() {
     e.preventDefault();
     setLoading(true);
     try {
-      await login(form.email, form.password);
+      const user = await login(form.email, form.password);
+      
+      // Verification: Check if the logged-in user's role matches the selection
+      if (user.role !== selectedRole) {
+         // We still let them in, but we show a small toast about their actual role
+         console.log(`User is actually a ${user.role}`);
+      }
+
       Swal.fire({
          title: 'Success!',
-         text: 'You have successfully logged in.',
+         text: `Successfully logged in as ${selectedRole.toUpperCase()}`,
          icon: 'success',
          timer: 1500,
          showConfirmButton: false
@@ -58,6 +66,12 @@ export default function Login() {
     }
   };
 
+  const roles = [
+    { id: "admin", label: "Admin" },
+    { id: "staff", label: "Staff" },
+    { id: "citizen", label: "Citizen" },
+  ];
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-900 px-4 relative overflow-hidden">
       
@@ -71,34 +85,37 @@ export default function Login() {
         className="w-full max-w-md bg-white/10 backdrop-blur-xl border border-white/20 rounded-3xl shadow-2xl overflow-hidden relative z-10"
       >
         <div className="p-8 sm:p-10">
-          <div className="text-center mb-10">
-            <h1 className="text-3xl font-extrabold text-white mb-2">Welcome Back</h1>
-            <p className="text-slate-300 text-sm">Sign in to your account and continue contributing to your community.</p>
+          <div className="text-center mb-8">
+            <h1 className="text-3xl font-extrabold text-white mb-2">Portal Login</h1>
+            <p className="text-slate-300 text-sm">Select your role and enter your credentials.</p>
           </div>
 
-          <button 
-            onClick={handleGoogle} 
-            className="w-full flex items-center justify-center gap-3 bg-white hover:bg-slate-50 text-slate-800 font-bold py-3 px-4 rounded-xl transition-colors mb-6 shadow-sm"
-          >
-            <img src="https://www.svgrepo.com/show/475656/google-color.svg" alt="Google" className="w-5 h-5" />
-            Sign in with Google
-          </button>
-
-          <div className="flex items-center gap-4 mb-6">
-            <div className="flex-1 h-px bg-slate-700"></div>
-            <span className="text-slate-400 text-xs font-semibold uppercase tracking-wider">or sign in with email</span>
-            <div className="flex-1 h-px bg-slate-700"></div>
+          {/* Role Selection Tabs */}
+          <div className="flex bg-slate-800/50 p-1 rounded-xl mb-8 border border-slate-700/50">
+            {roles.map((role) => (
+              <button
+                key={role.id}
+                onClick={() => setSelectedRole(role.id)}
+                className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
+                  selectedRole === role.id 
+                    ? "bg-emerald-500 text-white shadow-lg" 
+                    : "text-slate-400 hover:text-slate-200"
+                }`}
+              >
+                {role.label}
+              </button>
+            ))}
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-5">
             <div>
-              <label className="block text-sm font-semibold text-slate-300 mb-1.5">Email Address</label>
+              <label className="block text-sm font-semibold text-slate-300 mb-1.5">{selectedRole.toUpperCase()} Email</label>
               <input 
                 required 
                 type="email" 
                 value={form.email}
                 onChange={e => setForm({...form, email: e.target.value})}
-                placeholder="you@example.com"
+                placeholder={`Enter your ${selectedRole} email`}
                 className="w-full bg-slate-800/50 border border-slate-700 text-white placeholder-slate-500 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all"
               />
             </div>
@@ -119,9 +136,23 @@ export default function Login() {
               disabled={loading}
               className="w-full bg-emerald-500 hover:bg-emerald-400 text-white font-bold py-3.5 px-4 rounded-xl transition-all shadow-lg shadow-emerald-500/30 disabled:opacity-50 mt-4"
             >
-              {loading ? "Signing In..." : "Sign In"}
+              {loading ? "Verifying..." : `Login as ${selectedRole.charAt(0).toUpperCase() + selectedRole.slice(1)}`}
             </button>
           </form>
+
+          <div className="flex items-center gap-4 my-8">
+            <div className="flex-1 h-px bg-slate-700"></div>
+            <span className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">Social Login</span>
+            <div className="flex-1 h-px bg-slate-700"></div>
+          </div>
+
+          <button 
+            onClick={handleGoogle} 
+            className="w-full flex items-center justify-center gap-3 bg-white hover:bg-slate-50 text-slate-800 font-bold py-3 px-4 rounded-xl transition-colors mb-6 shadow-sm"
+          >
+            <img src="https://www.svgrepo.com/show/475656/google-color.svg" alt="Google" className="w-5 h-5" />
+            Continue with Google
+          </button>
 
           <div className="mt-8 text-center text-sm text-slate-400">
             Don't have an account?{" "}

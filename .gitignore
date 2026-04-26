@@ -28,6 +28,6 @@ dist-ssr
 .env.*.local
 client.md
 server.md
-*.md 
+*.md         
+.vercel.json
 
-         
