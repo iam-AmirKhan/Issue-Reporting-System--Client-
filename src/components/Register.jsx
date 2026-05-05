@@ -1,12 +1,17 @@
-import { useContext, useState } from "react";
+import { useContext, useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { AuthContext } from "../context/AuthContext";
 import { motion } from "framer-motion";
 import Swal from "sweetalert2";
 
 export default function Register() {
-  const { registerWithPhoto, loginWithGoogle } = useContext(AuthContext);
+  const { registerWithPhoto, loginWithGoogle, user } = useContext(AuthContext);
   const navigate = useNavigate();
+
+  // Redirect to dashboard after Google redirect login
+  useEffect(() => {
+    if (user) navigate("/dashboard", { replace: true });
+  }, [user, navigate]);
 
   const [form, setForm] = useState({ name: "", email: "", password: "" });
   const [file, setFile] = useState(null);
@@ -45,14 +50,9 @@ export default function Register() {
   const handleGoogle = async () => {
     try {
       await loginWithGoogle();
-      Swal.fire({
-         title: 'Welcome!',
-         text: 'Logged in with Google.',
-         icon: 'success',
-         timer: 1500,
-         showConfirmButton: false
-      });
-      navigate("/");
+      // loginWithGoogle triggers a redirect to Google.
+      // On return, onAuthStateChanged fires and sets the user.
+      // The page will redirect automatically via PrivateRoute/AuthContext.
     } catch (err) {
       Swal.fire({ title: 'Google Login Failed', text: err.message, icon: 'error' });
     }

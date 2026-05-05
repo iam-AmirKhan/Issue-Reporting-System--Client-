@@ -1,11 +1,11 @@
-import { useContext, useState } from "react";
+import { useContext, useState, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { AuthContext } from "../context/AuthContext";
 import { motion } from "framer-motion";
 import Swal from "sweetalert2";
 
 export default function Login() {
-  const { login, loginWithGoogle } = useContext(AuthContext);
+  const { login, loginWithGoogle, user } = useContext(AuthContext);
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -13,7 +13,12 @@ export default function Login() {
   const [selectedRole, setSelectedRole] = useState("citizen");
   const [loading, setLoading] = useState(false);
 
-  const from = location.state?.from?.pathname || "/";
+  const from = location.state?.from?.pathname || "/dashboard";
+
+  // Redirect to dashboard after Google redirect login
+  useEffect(() => {
+    if (user) navigate(from, { replace: true });
+  }, [user, navigate, from]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
