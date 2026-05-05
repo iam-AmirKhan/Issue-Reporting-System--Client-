@@ -13,6 +13,7 @@ export default function ReportIssue() {
   const [form, setForm] = useState({ title: "", description: "", category: "", location: "" });
   const [photoFile, setPhotoFile] = useState(null);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Fetch current user details from backend
   const { data: user, isLoading: userLoading, error: userError } = useQuery({
@@ -48,8 +49,9 @@ export default function ReportIssue() {
 
   const createMutation = useMutation({
     mutationFn: async (payload) => {
-      console.log("Submitting issue payload:", payload);
-      return await api.post("/api/issues", payload);
+      console.log("[ReportIssue] Submitting to API:", payload);
+      const res = await api.post("/api/issues", payload);
+      return res.data;
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["my-issues"] });
@@ -64,12 +66,15 @@ export default function ReportIssue() {
         timer: 2000,
         showConfirmButton: false
       });
+      setIsSubmitting(false);
       navigate("/dashboard/my-issues");
     },
     onError: (err) => {
-      console.error("Issue submission error:", err);
+      console.error("[ReportIssue] Mutation Error:", err);
+      setIsSubmitting(false);
       setUploadProgress(0);
-      Swal.fire("Error", err.response?.data?.message || "Failed to submit issue. Please try again.", "error");
+      const msg = err.response?.data?.message || err.message || "Failed to submit issue. Please try again.";
+      Swal.fire("Submission Failed", msg, "error");
     }
   });
 
@@ -77,17 +82,20 @@ export default function ReportIssue() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    console.log("Submit button clicked", { disabled, isBlocked, limitReached, isPremium, myCount });
+    console.log("[ReportIssue] handleSubmit triggered", { disabled, isSubmitting });
+
+    if (disabled || isSubmitting) return;
 
     if (!form.title || !form.description || !form.category || !form.location) {
       return Swal.fire("Incomplete Field", "Please fill out all fields.", "warning");
     }
 
+    setIsSubmitting(true);
     let uploadedUrl = "";
 
     if (photoFile) {
       try {
-        console.log("Uploading photo:", photoFile.name);
+        console.log("[ReportIssue] Starting photo upload:", photoFile.name);
         const safeName = `${Date.now()}-${photoFile.name.replace(/\s+/g, "_")}`;
         const storageRef = ref(storage, `issues/${safeName}`);
         const uploadTask = uploadBytesResumable(storageRef, photoFile);
@@ -100,34 +108,50 @@ export default function ReportIssue() {
               setUploadProgress(pct);
             },
             (err) => {
-              console.error("Upload error details:", err);
+              console.error("[ReportIssue] Photo upload task error:", err);
               setUploadProgress(0);
               reject(err);
             },
             async () => {
               const dl = await getDownloadURL(uploadTask.snapshot.ref);
+              console.log("[ReportIssue] Photo upload complete:", dl);
               setUploadProgress(100);
               resolve(dl);
             }
           );
         });
       } catch (err) {
-        console.error("Image upload failed", err);
+        console.error("[ReportIssue] Image upload failed", err);
         setUploadProgress(0);
         const proceed = await Swal.fire({
           title: "Upload Failed",
-          text: "Could not upload image. Submit without photo?",
+          text: "Could not upload image. Submit the report without the photo?",
           icon: "warning",
           showCancelButton: true,
           confirmButtonText: "Yes, submit",
-          cancelButtonText: "No, fix it"
+          cancelButtonText: "No, cancel"
         });
-        if (!proceed.isConfirmed) return;
+        
+        if (!proceed.isConfirmed) {
+          setIsSubmitting(false);
+          return;
+        }
       }
     }
 
-    console.log("About to mutate with payload:", { ...form, image: uploadedUrl });
-    createMutation.mutate({ ...form, image: uploadedUrl });
+    try {
+      console.log("[ReportIssue] Calling mutateAsync with payload:", { ...form, image: uploadedUrl });
+      const result = await createMutation.mutateAsync({ ...form, image: uploadedUrl });
+      console.log("[ReportIssue] mutateAsync result:", result);
+    } catch (err) {
+      console.error("[ReportIssue] mutateAsync catch block error:", err);
+      // Ensure isSubmitting is false if error occurred and mutation onError didn't fire or wasn't enough
+      setIsSubmitting(false);
+    } finally {
+      // Safety net to ensure we don't stay in loading state forever
+      // However, onSuccess handles navigation, so we only reset if still mounted
+      console.log("[ReportIssue] handleSubmit finished");
+    }
   };
 
   if (userLoading) return <div className="text-center py-20 animate-pulse text-slate-400 font-bold">Loading user data...</div>;
@@ -217,11 +241,11 @@ export default function ReportIssue() {
         </div>
 
         <div className="pt-6">
-           <button type="submit" disabled={disabled || createMutation.isPending} className="w-full flex justify-center py-4 px-4 border border-transparent rounded-2xl shadow-xl shadow-emerald-500/20 text-base font-bold text-white bg-emerald-600 hover:bg-emerald-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 disabled:opacity-50 disabled:bg-slate-400 disabled:shadow-none transition-all">
-             {createMutation.isPending ? (
+           <button type="submit" disabled={disabled || isSubmitting} className="w-full flex justify-center py-4 px-4 border border-transparent rounded-2xl shadow-xl shadow-emerald-500/20 text-base font-bold text-white bg-emerald-600 hover:bg-emerald-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 disabled:opacity-50 disabled:bg-slate-400 disabled:shadow-none transition-all">
+             {isSubmitting ? (
                <span className="flex items-center gap-2">
                  <svg className="animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                 Submitting...
+                 {uploadProgress > 0 && uploadProgress < 100 ? `Uploading Photo (${uploadProgress}%)...` : "Submitting Report..."}
                </span>
              ) : "Submit Issue Report"}
            </button>
