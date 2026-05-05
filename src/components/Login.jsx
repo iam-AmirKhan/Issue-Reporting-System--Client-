@@ -48,20 +48,13 @@ export default function Login() {
 
   const handleGoogle = async () => {
     try {
+      // This triggers a redirect to Google — page will leave and come back automatically
       await loginWithGoogle();
-      Swal.fire({
-         title: 'Welcome!',
-         text: 'Logged in with Google successfully.',
-         icon: 'success',
-         timer: 1500,
-         showConfirmButton: false
-      });
-      navigate(from, { replace: true });
     } catch (err) {
       Swal.fire({
-         title: 'Google Login Failed',
-         text: err.message,
-         icon: 'error'
+        title: 'Google Login Failed',
+        text: err.message,
+        icon: 'error'
       });
     }
   };

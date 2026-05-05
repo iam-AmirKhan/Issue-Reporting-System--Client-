@@ -5,11 +5,13 @@ import {
   signInWithEmailAndPassword,
   signOut,
   onAuthStateChanged,
-  signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   updateProfile,
 } from "firebase/auth";
 import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 import api from "../api/axiosConfig";
+
 export const AuthContext = createContext();
 
 function normalizeFirebaseUser(fbUser) {
@@ -43,14 +45,53 @@ function mergeAppUser(firebaseUser, appUser) {
 }
 
 export default function AuthProvider({ children }) {
-  const [user, setUser] = useState(null); // normalized user
+  const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [googleRedirectLoading, setGoogleRedirectLoading] = useState(false);
 
   useEffect(() => {
+    // Check if we're returning from a Google redirect
+    setGoogleRedirectLoading(true);
+    getRedirectResult(auth)
+      .then(async (result) => {
+        if (result?.user) {
+          const fbUser = result.user;
+          const normalized = normalizeFirebaseUser(fbUser);
+          try {
+            const { data } = await api.post("/api/users", {
+              uid: fbUser.uid,
+              name: fbUser.displayName || "",
+              email: fbUser.email,
+              photoURL: fbUser.photoURL || "",
+              role: "citizen",
+            });
+            const savedUser = data?.user || data?.data;
+            if (savedUser) {
+              const merged = mergeAppUser(normalized, savedUser);
+              setUser(merged);
+              try { localStorage.setItem("user", JSON.stringify(merged)); } catch { /* best effort */ }
+            } else {
+              setUser(normalized);
+              try { localStorage.setItem("user", JSON.stringify(normalized)); } catch { /* best effort */ }
+            }
+          } catch (err) {
+            console.warn("Failed to save Google redirect user to backend:", err);
+            setUser(normalized);
+            try { localStorage.setItem("user", JSON.stringify(normalized)); } catch { /* best effort */ }
+          }
+        }
+      })
+      .catch((err) => {
+        console.warn("[Auth] getRedirectResult error:", err);
+      })
+      .finally(() => {
+        setGoogleRedirectLoading(false);
+      });
+
     const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
       if (!fbUser) {
         setUser(null);
-        try { localStorage.removeItem("user"); } catch { /* storage cleanup is best effort */ }
+        try { localStorage.removeItem("user"); } catch { /* best effort */ }
         setLoading(false);
         return;
       }
@@ -66,18 +107,14 @@ export default function AuthProvider({ children }) {
       try { localStorage.setItem("user", JSON.stringify(appUser)); } catch (err) { console.warn(err); }
       setLoading(false);
     });
+
     return () => unsubscribe();
   }, []);
 
-  // Robust register with photo (safe logs + fallback)
   const registerWithPhoto = async (name, email, password, photoFile) => {
     try {
       const result = await createUserWithEmailAndPassword(auth, email, password);
       const uid = result.user?.uid;
-      console.log("[Auth] created user uid=", uid);
-
-      // debug: show what SDK thinks the bucket is
-      try { console.log("[Storage] SDK storageBucket:", storage?.app?.options?.storageBucket); } catch { /* debug log is best effort */ }
 
       let photoURL = "";
 
@@ -90,24 +127,14 @@ export default function AuthProvider({ children }) {
           await new Promise((resolve, reject) => {
             uploadTask.on(
               "state_changed",
-              (snapshot) => {
-                const pct = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
-                console.log(`[Upload] ${pct}%`);
-              },
-              (error) => {
-                console.error("[Upload] failed", error);
-                reject(error);
-              },
+              null,
+              (error) => { console.error("[Upload] failed", error); reject(error); },
               async () => {
                 try {
                   const dl = await getDownloadURL(uploadTask.snapshot.ref);
-                  console.log("[Upload] completed:", dl);
                   photoURL = dl;
                   resolve(dl);
-                } catch (err) {
-                  console.error("[Upload] getDownloadURL failed", err);
-                  reject(err);
-                }
+                } catch (err) { reject(err); }
               }
             );
           });
@@ -117,14 +144,12 @@ export default function AuthProvider({ children }) {
         }
       }
 
-      // update profile (best-effort)
       try {
         await updateProfile(result.user, { displayName: name, photoURL: photoURL || null });
       } catch (e) {
         console.warn("[Auth] updateProfile failed", e);
       }
 
-      // send to backend (best-effort)
       try {
         const { data } = await api.post("/api/users", {
           uid,
@@ -160,7 +185,6 @@ export default function AuthProvider({ children }) {
     }
   };
 
-  // login and persist normalized user
   const login = async (email, password) => {
     const cred = await signInWithEmailAndPassword(auth, email, password);
     let normalized = normalizeFirebaseUser(cred.user);
@@ -171,37 +195,16 @@ export default function AuthProvider({ children }) {
       console.warn("[Auth] backend profile fetch failed", err);
     }
     setUser(normalized);
-    try { localStorage.setItem("user", JSON.stringify(normalized)); } catch { /* local cache is best effort */ }
+    try { localStorage.setItem("user", JSON.stringify(normalized)); } catch { /* best effort */ }
     return cred;
   };
 
+  // Uses redirect — no popup, works on all browsers and deployed sites
   const loginWithGoogle = async () => {
-    const res = await signInWithPopup(auth, googleProvider);
-    const fbUser = res.user;
-    const normalized = normalizeFirebaseUser(fbUser);
-
-    try {
-      const { data } = await api.post("/api/users", {
-        uid: fbUser.uid,
-        name: fbUser.displayName || "",
-        email: fbUser.email,
-        photoURL: fbUser.photoURL || "",
-        role: "citizen",
-      });
-      const savedUser = data?.user || data?.data;
-      if (savedUser) {
-        const merged = mergeAppUser(normalized, savedUser);
-        setUser(merged);
-        try { localStorage.setItem("user", JSON.stringify(merged)); } catch { /* local cache is best effort */ }
-        return res;
-      }
-    } catch (err) {
-      console.warn("Failed to save Google user to backend:", err);
-    }
-
-    setUser(normalized);
-    try { localStorage.setItem("user", JSON.stringify(normalized)); } catch { /* local cache is best effort */ }
-    return res;
+    googleProvider.setCustomParameters({ prompt: "select_account" });
+    await signInWithRedirect(auth, googleProvider);
+    // Page will redirect to Google, then come back
+    // getRedirectResult() in useEffect handles the result on return
   };
 
   const logout = async () => {
@@ -209,21 +212,20 @@ export default function AuthProvider({ children }) {
       await signOut(auth);
     } finally {
       setUser(null);
-      try { localStorage.removeItem("user"); } catch { /* storage cleanup is best effort */ }
+      try { localStorage.removeItem("user"); } catch { /* best effort */ }
     }
   };
 
-  // export both names to avoid breakage if other parts call logOut
   return (
     <AuthContext.Provider
       value={{
         user,
-        loading,
+        loading: loading || googleRedirectLoading,
         registerWithPhoto,
         login,
         loginWithGoogle,
         logout,
-        logOut: logout, // alias for older code
+        logOut: logout,
       }}
     >
       {children}

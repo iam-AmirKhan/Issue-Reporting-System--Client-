@@ -1,63 +1,119 @@
 import React, { useState, useEffect } from "react";
-import axios from "axios";
+import { useNavigate } from "react-router-dom";
+import api from "../api/axiosConfig";
+import Swal from "sweetalert2";
 
 export default function ReportIssue() {
   const [title, setTitle] = useState("");
   const [desc, setDesc] = useState("");
+  const [locationName, setLocationName] = useState("");
   const [canCreate, setCanCreate] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const navigate = useNavigate();
 
   useEffect(() => {
     // check user's issue count
-    axios
-      .get(
-        `${
-          import.meta.env.VITE_API_BASE ||
-          "http://https://issue-reporting-system-server.vercel.app:5000"
-        }/api/issues/my`
-      )
+    api
+      .get("/api/issues?mine=true")
       .then((r) => {
         const count = r.data.issues?.length || 0;
-        setCanCreate(count < 3); // client simple check; server authoritative
+        // Assuming free users are limited to 3 issues
+        // The server will also check this.
+        setCanCreate(count < 3); 
+      })
+      .catch(err => {
+        console.error("Failed to fetch issue count", err);
       });
   }, []);
 
   async function submit() {
+    if (!title || !desc || !locationName) {
+      Swal.fire("Error", "Please fill all fields", "error");
+      return;
+    }
+
+    setLoading(true);
     try {
-      await axios.post(
-        `${
-          import.meta.env.VITE_API_BASE ||
-          "http://https://issue-reporting-system-server.vercel.app:5000"
-        }/api/issues`,
-        { title, description: desc, category: "general" }
-      );
-      location.href = "/dashboard/my-issues";
+      await api.post("/api/issues", { 
+        title, 
+        description: desc, 
+        category: "general",
+        location: locationName 
+      });
+      
+      Swal.fire({
+        title: "Success",
+        text: "Issue reported successfully!",
+        icon: "success",
+        timer: 1500,
+        showConfirmButton: false
+      });
+      
+      navigate("/dashboard/my-issues");
     } catch (err) {
-      alert(err?.response?.data?.message || "Failed");
+      Swal.fire({
+        title: "Failed",
+        text: err?.response?.data?.message || "Failed to create issue",
+        icon: "error"
+      });
+    } finally {
+      setLoading(false);
     }
   }
 
   return (
-    <div className="max-w-xl mx-auto p-6">
-      <h3 className="font-semibold mb-4">Report Issue</h3>
-      <input
-        className="w-full p-2 border rounded mb-2"
-        value={title}
-        onChange={(e) => setTitle(e.target.value)}
-        placeholder="Title"
-      />
-      <textarea
-        className="w-full p-2 border rounded mb-2"
-        value={desc}
-        onChange={(e) => setDesc(e.target.value)}
-        placeholder="Description"
-      />
-      <button
-        disabled={!canCreate}
-        onClick={submit}
-        className="px-4 py-2 bg-blue-600 text-white rounded"
-      >
-        {canCreate ? "Submit" : "Subscribe to submit more"}
-      </button>
+    <div className="max-w-xl mx-auto p-6 bg-white shadow-lg rounded-xl mt-10">
+      <h3 className="text-2xl font-bold mb-6 text-slate-800">Report New Issue</h3>
+      
+      <div className="space-y-4">
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1">Title</label>
+          <input
+            className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="What's the issue?"
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1">Location</label>
+          <input
+            className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
+            value={locationName}
+            onChange={(e) => setLocationName(e.target.value)}
+            placeholder="Where is this happening?"
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1">Description</label>
+          <textarea
+            className="w-full p-3 border border-slate-300 rounded-lg h-32 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+            value={desc}
+            onChange={(e) => setDesc(e.target.value)}
+            placeholder="Provide more details..."
+          />
+        </div>
+
+        <button
+          disabled={!canCreate || loading}
+          onClick={submit}
+          className={`w-full py-3 px-4 rounded-lg font-bold text-white transition-all ${
+            canCreate 
+              ? "bg-blue-600 hover:bg-blue-700 shadow-md" 
+              : "bg-slate-400 cursor-not-allowed"
+          }`}
+        >
+          {loading ? "Submitting..." : canCreate ? "Submit Issue" : "Limit Reached (Upgrade Required)"}
+        </button>
+        
+        {!canCreate && (
+          <p className="text-sm text-red-500 mt-2 text-center">
+            You have reached the limit of 3 issues for free accounts.
+          </p>
+        )}
+      </div>
     </div>
   );
 }
