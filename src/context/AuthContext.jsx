@@ -17,8 +17,8 @@ export const AuthContext = createContext();
 function normalizeFirebaseUser(fbUser) {
   if (!fbUser) return null;
   return {
-    id: fbUser.uid || fbUser.id || fbUser.userId,
-    uid: fbUser.uid || fbUser.id || fbUser.userId,
+    id: fbUser.uid,
+    uid: fbUser.uid,
     _id: fbUser._id,
     name: fbUser.displayName || fbUser.name || "",
     email: fbUser.email || "",
@@ -36,7 +36,7 @@ function mergeAppUser(firebaseUser, appUser) {
     ...firebaseUser,
     ...appUser,
     id: appUser.id || appUser._id || firebaseUser.id,
-    uid: firebaseUser.uid || firebaseUser.id,
+    uid: firebaseUser.uid,
     photoURL: appUser.photoURL || firebaseUser.photoURL || "",
     role: appUser.role || firebaseUser.role || "citizen",
     isBlocked: !!(appUser.isBlocked || appUser.blocked),
@@ -47,47 +47,9 @@ function mergeAppUser(firebaseUser, appUser) {
 export default function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [googleRedirectLoading, setGoogleRedirectLoading] = useState(false);
 
   useEffect(() => {
-    // Check if we're returning from a Google redirect
-    setGoogleRedirectLoading(true);
-    getRedirectResult(auth)
-      .then(async (result) => {
-        if (result?.user) {
-          const fbUser = result.user;
-          const normalized = normalizeFirebaseUser(fbUser);
-          try {
-            const { data } = await api.post("/api/users", {
-              uid: fbUser.uid,
-              name: fbUser.displayName || "",
-              email: fbUser.email,
-              photoURL: fbUser.photoURL || "",
-              role: "citizen",
-            });
-            const savedUser = data?.user || data?.data;
-            if (savedUser) {
-              const merged = mergeAppUser(normalized, savedUser);
-              setUser(merged);
-              try { localStorage.setItem("user", JSON.stringify(merged)); } catch { /* best effort */ }
-            } else {
-              setUser(normalized);
-              try { localStorage.setItem("user", JSON.stringify(normalized)); } catch { /* best effort */ }
-            }
-          } catch (err) {
-            console.warn("Failed to save Google redirect user to backend:", err);
-            setUser(normalized);
-            try { localStorage.setItem("user", JSON.stringify(normalized)); } catch { /* best effort */ }
-          }
-        }
-      })
-      .catch((err) => {
-        console.warn("[Auth] getRedirectResult error:", err);
-      })
-      .finally(() => {
-        setGoogleRedirectLoading(false);
-      });
-
+    // onAuthStateChanged handles ALL auth state — including after Google redirect
     const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
       if (!fbUser) {
         setUser(null);
@@ -95,16 +57,41 @@ export default function AuthProvider({ children }) {
         setLoading(false);
         return;
       }
+
       const normalized = normalizeFirebaseUser(fbUser);
       let appUser = normalized;
+
       try {
-        const { data } = await api.get("/api/users/me");
-        appUser = mergeAppUser(normalized, data);
+        // Try to sync with backend — creates user if new (Google signup), fetches if existing
+        const { data } = await api.post("/api/users", {
+          uid: fbUser.uid,
+          name: fbUser.displayName || "",
+          email: fbUser.email,
+          photoURL: fbUser.photoURL || "",
+          role: "citizen",
+        });
+        const savedUser = data?.user || data?.data || data;
+        if (savedUser?.role) {
+          appUser = mergeAppUser(normalized, savedUser);
+        } else {
+          // Fallback: fetch existing user
+          try {
+            const res = await api.get("/api/users/me");
+            appUser = mergeAppUser(normalized, res.data);
+          } catch { /* use normalized */ }
+        }
       } catch (err) {
-        console.warn("[Auth] backend profile fetch failed", err);
+        // POST failed — user might already exist, try GET
+        try {
+          const res = await api.get("/api/users/me");
+          appUser = mergeAppUser(normalized, res.data);
+        } catch {
+          console.warn("[Auth] backend sync failed, using Firebase user only");
+        }
       }
+
       setUser(appUser);
-      try { localStorage.setItem("user", JSON.stringify(appUser)); } catch (err) { console.warn(err); }
+      try { localStorage.setItem("user", JSON.stringify(appUser)); } catch { /* best effort */ }
       setLoading(false);
     });
 
@@ -128,7 +115,7 @@ export default function AuthProvider({ children }) {
             uploadTask.on(
               "state_changed",
               null,
-              (error) => { console.error("[Upload] failed", error); reject(error); },
+              (error) => { reject(error); },
               async () => {
                 try {
                   const dl = await getDownloadURL(uploadTask.snapshot.ref);
@@ -162,7 +149,7 @@ export default function AuthProvider({ children }) {
         if (savedUser) {
           const merged = mergeAppUser(normalizeFirebaseUser(result.user), savedUser);
           setUser(merged);
-          try { localStorage.setItem("user", JSON.stringify(merged)); } catch (err) { console.warn(err); }
+          try { localStorage.setItem("user", JSON.stringify(merged)); } catch { /* best effort */ }
           return merged;
         }
       } catch (err) {
@@ -177,7 +164,7 @@ export default function AuthProvider({ children }) {
         role: "citizen",
       };
       setUser(normalized);
-      try { localStorage.setItem("user", JSON.stringify(normalized)); } catch (err) { console.warn(err); }
+      try { localStorage.setItem("user", JSON.stringify(normalized)); } catch { /* best effort */ }
       return normalized;
     } catch (err) {
       console.error("[registerWithPhoto] unexpected error:", err);
@@ -199,12 +186,11 @@ export default function AuthProvider({ children }) {
     return cred;
   };
 
-  // Uses redirect — no popup, works on all browsers and deployed sites
+  // Redirect-based Google login — no popup, works on all browsers
   const loginWithGoogle = async () => {
     googleProvider.setCustomParameters({ prompt: "select_account" });
     await signInWithRedirect(auth, googleProvider);
-    // Page will redirect to Google, then come back
-    // getRedirectResult() in useEffect handles the result on return
+    // onAuthStateChanged will fire automatically when user returns from Google
   };
 
   const logout = async () => {
@@ -220,7 +206,7 @@ export default function AuthProvider({ children }) {
     <AuthContext.Provider
       value={{
         user,
-        loading: loading || googleRedirectLoading,
+        loading,
         registerWithPhoto,
         login,
         loginWithGoogle,
