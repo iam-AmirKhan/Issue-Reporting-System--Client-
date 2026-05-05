@@ -47,15 +47,14 @@ export default function Register() {
     }
   };
 
-  const handleGoogle = async () => {
-    try {
-      await loginWithGoogle();
-      // loginWithGoogle triggers a redirect to Google.
-      // On return, onAuthStateChanged fires and sets the user.
-      // The page will redirect automatically via PrivateRoute/AuthContext.
-    } catch (err) {
-      Swal.fire({ title: 'Google Login Failed', text: err.message, icon: 'error' });
-    }
+  const handleGoogle = () => {
+    loginWithGoogle()
+      .then(() => {
+        navigate("/dashboard", { replace: true });
+      })
+      .catch((err) => {
+        Swal.fire({ title: 'Google Login Failed', text: err.message, icon: 'error' });
+      });
   };
 
   return (
