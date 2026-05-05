@@ -73,13 +73,16 @@ export default function AuthProvider({ children }) {
     // After signInWithRedirect, Firebase automatically fires onAuthStateChanged
     // with the signed-in user when the page loads back.
     const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
+      console.log("[Auth] onAuthStateChanged:", fbUser?.email || "null");
       if (!fbUser) {
         setUser(null);
         try { localStorage.removeItem("user"); } catch { /* best effort */ }
         setLoading(false);
         return;
       }
+      console.log("[Auth] syncing user with backend...");
       const appUser = await syncUserWithBackend(fbUser);
+      console.log("[Auth] final user:", appUser?.email, "role:", appUser?.role);
       setUser(appUser);
       try { localStorage.setItem("user", JSON.stringify(appUser)); } catch { /* best effort */ }
       setLoading(false);
