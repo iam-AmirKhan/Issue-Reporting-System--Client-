@@ -48,13 +48,9 @@ export default function Register() {
   };
 
   const handleGoogle = () => {
-    loginWithGoogle()
-      .then(() => {
-        navigate("/dashboard", { replace: true });
-      })
-      .catch((err) => {
-        Swal.fire({ title: 'Google Login Failed', text: err.message, icon: 'error' });
-      });
+    loginWithGoogle().catch((err) => {
+      Swal.fire({ title: 'Google Login Failed', text: err.message, icon: 'error' });
+    });
   };
 
   return (

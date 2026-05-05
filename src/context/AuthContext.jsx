@@ -5,7 +5,8 @@ import {
   signInWithEmailAndPassword,
   signOut,
   onAuthStateChanged,
-  signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   updateProfile,
 } from "firebase/auth";
 import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
@@ -18,7 +19,6 @@ function normalizeFirebaseUser(fbUser) {
   return {
     id: fbUser.uid,
     uid: fbUser.uid,
-    _id: fbUser._id,
     name: fbUser.displayName || fbUser.name || "",
     email: fbUser.email || "",
     photoURL: fbUser.photoURL || "",
@@ -55,7 +55,7 @@ async function syncUserWithBackend(fbUser) {
     });
     const savedUser = data?.user || data?.data;
     if (savedUser?.role) return mergeAppUser(normalized, savedUser);
-  } catch { /* POST failed, try GET */ }
+  } catch { /* try GET fallback */ }
   try {
     const { data } = await api.get("/api/users/me");
     return mergeAppUser(normalized, data);
@@ -69,6 +69,9 @@ export default function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // onAuthStateChanged is the single source of truth.
+    // After signInWithRedirect, Firebase automatically fires onAuthStateChanged
+    // with the signed-in user when the page loads back.
     const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
       if (!fbUser) {
         setUser(null);
@@ -81,6 +84,7 @@ export default function AuthProvider({ children }) {
       try { localStorage.setItem("user", JSON.stringify(appUser)); } catch { /* best effort */ }
       setLoading(false);
     });
+
     return () => unsubscribe();
   }, []);
 
@@ -97,15 +101,15 @@ export default function AuthProvider({ children }) {
           const uploadTask = uploadBytesResumable(storageRef, photoFile);
           await new Promise((resolve, reject) => {
             uploadTask.on("state_changed", null,
-              (error) => reject(error),
+              (err) => reject(err),
               async () => {
                 try { photoURL = await getDownloadURL(uploadTask.snapshot.ref); resolve(); }
                 catch (err) { reject(err); }
               }
             );
           });
-        } catch (uploadErr) {
-          console.error("[registerWithPhoto] upload error:", uploadErr);
+        } catch (err) {
+          console.error("[registerWithPhoto] upload error:", err);
           photoURL = "";
         }
       }
@@ -121,7 +125,6 @@ export default function AuthProvider({ children }) {
       try { localStorage.setItem("user", JSON.stringify(appUser)); } catch { /* best effort */ }
       return appUser;
     } catch (err) {
-      console.error("[registerWithPhoto] unexpected error:", err);
       throw err;
     }
   };
@@ -134,17 +137,11 @@ export default function AuthProvider({ children }) {
     return cred;
   };
 
-  // signInWithPopup must be called directly from a user gesture (button click).
-  // Do NOT await anything before calling this — browsers block popups opened from async context.
+  // signInWithRedirect: redirects to Google, then back to the app.
+  // onAuthStateChanged fires automatically on return with the signed-in user.
   const loginWithGoogle = () => {
     googleProvider.setCustomParameters({ prompt: "select_account" });
-    // Return the promise — caller must call this directly, not after any await
-    return signInWithPopup(auth, googleProvider).then(async (res) => {
-      const appUser = await syncUserWithBackend(res.user);
-      setUser(appUser);
-      try { localStorage.setItem("user", JSON.stringify(appUser)); } catch { /* best effort */ }
-      return appUser;
-    });
+    return signInWithRedirect(auth, googleProvider);
   };
 
   const logout = async () => {

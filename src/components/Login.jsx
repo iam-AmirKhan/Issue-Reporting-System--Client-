@@ -52,18 +52,9 @@ export default function Login() {
   };
 
   const handleGoogle = () => {
-    // Must call loginWithGoogle directly — no await before it to avoid popup block
-    loginWithGoogle()
-      .then(() => {
-        navigate(from, { replace: true });
-      })
-      .catch((err) => {
-        Swal.fire({
-          title: 'Google Login Failed',
-          text: err.message,
-          icon: 'error'
-        });
-      });
+    loginWithGoogle().catch((err) => {
+      Swal.fire({ title: 'Google Login Failed', text: err.message, icon: 'error' });
+    });
   };
 
   const roles = [
