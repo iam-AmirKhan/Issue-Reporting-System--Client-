@@ -35,24 +35,21 @@ export default function ManageIssues() {
   });
 
   const assignMutation = useMutation({
-    mutationFn: async ({ id, staffId }) => await api.post(`/api/issues/${id}/assign`, { staffId }),
-    onSuccess: (data, variables) => {
+    mutationFn: async ({ id, staffId }) => await api.patch(`/api/issues/${id}/assign`, { staffId }),
+    onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["admin-manage-issues"] });
-      Swal.fire("Assigned", "Staff has been successfully assigned to the issue.", "success");
+      Swal.fire({ title: "Assigned!", text: "Staff has been successfully assigned to the issue.", icon: "success", timer: 1800, showConfirmButton: false });
       setIsModalOpen(false);
       setSelectedIssueId(null);
-      
-      const s = staffList.find(x => x.id === variables.staffId || x._id === variables.staffId);
-      // We'll trust backend timeline, but keep the success flow clean
     },
     onError: (err) => Swal.fire("Error", err.response?.data?.message || "Failed to assign", "error")
   });
 
   const rejectMutation = useMutation({
-    mutationFn: async (id) => await api.post(`/api/issues/${id}/reject`),
-    onSuccess: (data, id) => {
+    mutationFn: async (id) => await api.patch(`/api/issues/${id}/reject`),
+    onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["admin-manage-issues"] });
-      Swal.fire("Rejected", "Issue rejected.", "success");
+      Swal.fire({ title: "Rejected", text: "Issue has been rejected.", icon: "success", timer: 1500, showConfirmButton: false });
     },
     onError: (err) => Swal.fire("Error", err.response?.data?.message || "Failed to reject", "error")
   });
@@ -90,7 +87,10 @@ export default function ManageIssues() {
           <option value="all">Every Issue</option>
           <option value="pending">Pending Assignment</option>
           <option value="in_progress">In Progress</option>
+          <option value="working">Working</option>
           <option value="resolved">Resolved</option>
+          <option value="rejected">Rejected</option>
+          <option value="closed">Closed</option>
         </select>
       </div>
 
@@ -125,9 +125,11 @@ export default function ManageIssues() {
                        <span className={`px-2 py-0.5 text-xs font-semibold rounded shadow-sm ${
                          issue.status === "pending" ? "bg-amber-100 text-amber-700" :
                          issue.status === "in_progress" || issue.status === "working" ? "bg-blue-100 text-blue-700" :
-                         issue.status === "resolved" ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-700"
+                         issue.status === "resolved" ? "bg-emerald-100 text-emerald-700" :
+                         issue.status === "rejected" ? "bg-rose-100 text-rose-700" :
+                         "bg-slate-100 text-slate-700"
                        }`}>
-                         {(issue.status || "Pending").replace("_", " ").toUpperCase()}
+                         {(issue.status || "Pending").replace(/_/g, " ").toUpperCase()}
                        </span>
                        <div className="flex gap-1">
                          {issue.priority === "high" && <span className="px-1.5 py-0.5 text-[10px] font-bold rounded bg-rose-100 text-rose-700">Urgent</span>}

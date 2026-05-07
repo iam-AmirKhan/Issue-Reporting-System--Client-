@@ -13,7 +13,9 @@ export default function RecentReportsSection() {
     queryKey: ["recent-reports"],
     queryFn: async () => {
       const res = await api.get("/api/issues?limit=6");
-      return Array.isArray(res.data) ? res.data : (res.data.issues || res.data.data || []);
+      const resultData = res.data;
+      if (Array.isArray(resultData)) return resultData;
+      return resultData.issues || resultData.data || [];
     },
     staleTime: 30 * 1000,
   });

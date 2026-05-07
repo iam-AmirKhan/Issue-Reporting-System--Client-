@@ -12,20 +12,17 @@ const api = axios.create({
 // Intercept requests to attach token
 api.interceptors.request.use(
   async (config) => {
-    // Attempt to get Firebase token if user is signed in
-    if (auth?.currentUser) {
-      try {
-        const token = await auth.currentUser.getIdToken();
-        config.headers.Authorization = `Bearer ${token}`;
-      } catch (err) {
-        console.warn("Could not fetch Firebase token", err);
-      }
-    } else {
-      // Fallback to local storage if needed by custom JWT
-      const token = localStorage.getItem("access-token");
-      if (token) {
+    try {
+      // authStateReady() resolves only after Firebase has fully initialized
+      // and determined whether a user is signed in or not — no race condition.
+      await auth.authStateReady();
+
+      if (auth.currentUser) {
+        const token = await auth.currentUser.getIdToken(false);
         config.headers.Authorization = `Bearer ${token}`;
       }
+    } catch (err) {
+      console.warn("Could not attach Firebase token:", err);
     }
     return config;
   },

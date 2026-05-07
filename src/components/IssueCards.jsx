@@ -110,12 +110,12 @@ export default function IssueCards({ issue, currentUser }) {
         {/* Badges Top Left */}
         <div className="absolute top-3 left-3 flex flex-col gap-2">
           <span className={`px-2.5 py-1 text-xs font-semibold rounded-full shadow-sm ${
-            issue.status === "resolved" ? "bg-emerald-100 text-emerald-700" :
-            issue.status === "in_progress" || issue.status === "working" ? "bg-blue-100 text-blue-700" :
-            issue.status === "closed" ? "bg-slate-200 text-slate-700" :
+            issue.status?.toLowerCase() === "resolved" ? "bg-emerald-100 text-emerald-700" :
+            issue.status?.toLowerCase() === "in-progress" || issue.status?.toLowerCase() === "working" ? "bg-blue-100 text-blue-700" :
+            issue.status?.toLowerCase() === "closed" ? "bg-slate-200 text-slate-700" :
             "bg-amber-100 text-amber-700"
           }`}>
-            {(issue.status || "Pending").replace("_", " ").toUpperCase()}
+            {(issue.status || "Pending").replace("_", " ").replace("-", " ").toUpperCase()}
           </span>
           {issue.priority === "high" && (
             <span className="px-2.5 py-1 text-xs font-bold rounded-full bg-rose-100 text-rose-700 shadow-sm animate-pulse">

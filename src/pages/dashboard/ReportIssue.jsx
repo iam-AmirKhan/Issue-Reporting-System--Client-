@@ -35,8 +35,9 @@ export default function ReportIssue() {
 
   const isBlocked = !!(user?.isBlocked || user?.blocked);
   const isPremium = !!user?.isPremium;
-  // Only enforce limit if both queries succeeded and count is confirmed >= 3
-  const limitReached = !userLoading && !countLoading && !countError && !isPremium && Number(myCount) >= 3;
+  const isCitizen = user?.role === "citizen";
+  // Only enforce limit if user is a citizen, not premium, and has 3 or more issues
+  const limitReached = !userLoading && !countLoading && !countError && isCitizen && !isPremium && Number(myCount) >= 3;
   const disabled = isBlocked || limitReached;
 
   console.log("[ReportIssue] state:", { isBlocked, isPremium, myCount, limitReached, disabled, userLoading, countLoading, countError, user });
@@ -141,7 +142,17 @@ export default function ReportIssue() {
 
     try {
       console.log("[ReportIssue] Calling mutateAsync with payload:", { ...form, image: uploadedUrl });
+      Swal.fire({
+        title: 'Submitting Report...',
+        text: 'Please wait while we process your request.',
+        allowOutsideClick: false,
+        didOpen: () => {
+          Swal.showLoading();
+        }
+      });
+
       const result = await createMutation.mutateAsync({ ...form, image: uploadedUrl });
+      console.log("[ReportIssue] Submission result:", result);
       console.log("[ReportIssue] mutateAsync result:", result);
     } catch (err) {
       console.error("[ReportIssue] mutateAsync catch block error:", err);
@@ -155,6 +166,7 @@ export default function ReportIssue() {
   };
 
   if (userLoading) return <div className="text-center py-20 animate-pulse text-slate-400 font-bold">Loading user data...</div>;
+  if (userError) return <div className="text-center py-20 text-red-500 font-bold">Failed to load user data. Please refresh the page.</div>;
 
   return (
     <div className="max-w-2xl mx-auto animate-fade-up px-4 py-8">

@@ -23,7 +23,7 @@ export default function AssignedIssues() {
   });
 
   const statusMutation = useMutation({
-    mutationFn: async ({ id, status }) => await api.put(`/api/issues/${id}`, { status }),
+    mutationFn: async ({ id, status }) => await api.patch(`/api/issues/${id}/status`, { status }),
     onSuccess: (data, variables) => {
       qc.invalidateQueries({ queryKey: ["assigned-issues"] });
       Swal.fire({
@@ -33,12 +33,12 @@ export default function AssignedIssues() {
         timer: 1500,
         showConfirmButton: false
       });
-      // Try to push a timeline event automatically on the backend, or we could do it here
+      // Log a timeline entry for the status change
       api.post(`/api/issues/${variables.id}/timeline`, {
          status: variables.status,
-         message: `Status officially updated to ${variables.status.replace("_", " ")} by Assignee.`,
+         message: `Status updated to ${variables.status.replace(/_/g, " ")} by assigned staff.`,
          role: "Staff"
-      }).catch(err => console.error("Timeline log failed", err));
+      }).catch(err => console.warn("Timeline log failed", err));
     },
     onError: (err) => Swal.fire("Error", err.response?.data?.message || "Failed to update status", "error")
   });
@@ -147,7 +147,7 @@ export default function AssignedIssues() {
                         issue.status === "closed" ? "bg-slate-200 text-slate-700" :
                         "bg-amber-100 text-amber-700"
                       }`}>
-                        {(issue.status || "Pending").replace("_", " ").toUpperCase()}
+                        {(issue.status || "pending").replace(/_/g, " ").toUpperCase()}
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
@@ -155,19 +155,29 @@ export default function AssignedIssues() {
                       {/* Status Next Action Dropdown */}
                       <div className="flex items-center justify-end gap-2">
                         <select 
+                           defaultValue=""
+                           key={issue.status} // re-mount on status change to reset selection
                            className="bg-slate-50 border border-slate-200 text-slate-700 text-xs font-semibold rounded-lg focus:ring-emerald-500 block p-2 outline-none shadow-sm cursor-pointer max-w-[140px]"
                            onChange={(e) => {
                              if(e.target.value) {
                                 handleStatusChange(issue._id || issue.id, e.target.value);
-                                e.target.value = ""; // reset after action
                              }
                            }}
                         >
                            <option value="">Actions...</option>
-                           {issue.status === "pending" && <option value="in_progress">Start Progress</option>}
-                           {issue.status === "in_progress" && <option value="working">Log Working</option>}
-                           {(issue.status === "in_progress" || issue.status === "working") && <option value="resolved">Mark Resolved</option>}
-                           {issue.status === "resolved" && <option value="closed">Close Ticket</option>}
+                           {issue.status === "pending" && (
+                             <option value="in_progress">Start Progress</option>
+                           )}
+                           {issue.status === "in_progress" && <>
+                             <option value="working">Log Working</option>
+                             <option value="resolved">Mark Resolved</option>
+                           </>}
+                           {issue.status === "working" && (
+                             <option value="resolved">Mark Resolved</option>
+                           )}
+                           {issue.status === "resolved" && (
+                             <option value="closed">Close Ticket</option>
+                           )}
                         </select>
                         <Link to={`/issue/${issue._id || issue.id}`} className="p-2 text-slate-400 hover:text-emerald-600 bg-slate-50 hover:bg-emerald-50 rounded-lg transition-colors border border-slate-200 hover:border-emerald-200">
                           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>

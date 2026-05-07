@@ -13,15 +13,20 @@ export default function LatestResolvedSection() {
     queryKey: ["latest-issues"],
     queryFn: async () => {
       const res = await api.get("/api/issues?status=resolved&limit=6");
-      const data = Array.isArray(res.data)
-        ? res.data
-        : Array.isArray(res.data.issues)
-          ? res.data.issues
-          : Array.isArray(res.data.data)
-            ? res.data.data
+      const resultData = res.data;
+      const data = Array.isArray(resultData)
+        ? resultData
+        : Array.isArray(resultData.issues)
+          ? resultData.issues
+          : Array.isArray(resultData.data)
+            ? resultData.data
             : [];
+      
       return data
-        .filter((issue) => (issue.status || "").toLowerCase().replace("-", "_") === "resolved")
+        .filter((issue) => {
+          const s = (issue.status || "").toLowerCase().replace("-", "_");
+          return s === "resolved";
+        })
         .sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0))
         .slice(0, 6);
     },

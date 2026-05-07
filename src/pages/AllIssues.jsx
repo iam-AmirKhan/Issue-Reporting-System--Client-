@@ -43,13 +43,16 @@ export default function AllIssues() {
     const res = await api.get(`/api/issues?${params.toString()}`);
 
     const resultData = res.data;
-    if (Array.isArray(resultData)) {
-      return { issues: resultData, totalPages: 1 };
-    }
-    const issueList = resultData.issues || resultData.data || [];
+    const issueList = Array.isArray(resultData) 
+      ? resultData 
+      : (resultData.issues || resultData.data || []);
+    
+    const totalCount = resultData.total || issueList.length || 0;
+    const totalPagesCount = resultData.totalPages || Math.max(Math.ceil(totalCount / limit), 1);
+
     return {
       issues: issueList,
-      totalPages: resultData.totalPages || Math.ceil((resultData.total || issueList.length || 0) / limit) || 1
+      totalPages: totalPagesCount
     };
   };
 

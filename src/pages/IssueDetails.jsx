@@ -70,9 +70,9 @@ export default function IssueDetails() {
   const actionMutation = useMutation({
     mutationFn: async ({ action, payload }) => {
       if (action === "boost") return await api.post(`/api/issues/${id}/boost`, payload);
-      if (action === "assign") return await api.post(`/api/issues/${id}/assign`, payload);
-      if (action === "reject") return await api.post(`/api/issues/${id}/reject`);
-      if (action === "status") return await api.put(`/api/issues/${id}`, payload);
+      if (action === "assign") return await api.patch(`/api/issues/${id}/assign`, payload);
+      if (action === "reject") return await api.patch(`/api/issues/${id}/reject`);
+      if (action === "status") return await api.patch(`/api/issues/${id}/status`, payload);
     },
     onSuccess: (data, variables) => {
       let msg = "Action successful.";
@@ -217,12 +217,12 @@ export default function IssueDetails() {
             <div>
               <div className="flex items-center gap-3 mb-3">
                 <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase ${
-                  issue.status === "resolved" ? "bg-emerald-500 text-white" :
-                  issue.status === "in_progress" || issue.status === "working" ? "bg-blue-500 text-white" :
-                  issue.status === "closed" ? "bg-slate-600 text-white" :
+                  issue.status?.toLowerCase() === "resolved" ? "bg-emerald-500 text-white" :
+                  issue.status?.toLowerCase() === "in-progress" || issue.status?.toLowerCase() === "working" ? "bg-blue-500 text-white" :
+                  issue.status?.toLowerCase() === "closed" ? "bg-slate-600 text-white" :
                   "bg-amber-500 text-white"
                 }`}>
-                  {issue.status?.replace("_", " ") || "PENDING"}
+                  {issue.status?.replace("_", " ").replace("-", " ") || "PENDING"}
                 </span>
                 {issue.priority === "high" && (
                    <span className="px-3 py-1 bg-rose-500 text-white rounded-full text-xs font-bold">URGENT</span>
